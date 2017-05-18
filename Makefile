@@ -15,7 +15,7 @@ GLSV=glslangValidator
 
 SPV=cube-vert.spv cube-frag.spv
 
-CFLAGS=-O0 -g -DVK_USE_PLATFORM_XCB_KHR -I/local/xorg/include
+CFLAGS=-O0 -g -DVK_USE_PLATFORM_XCB_KHR -DVK_USE_PLATFORM_KMS_KEITHP -I/local/xorg/include -I/local/xorg/include/libdrm
 
 all: $(TARGET) $(SPV)
 

@@ -33,6 +33,9 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR)
 #include <X11/Xutil.h>
 #endif
@@ -3074,6 +3077,7 @@ static void demo_init_vk(struct demo *demo) {
     /* Look for instance extensions */
     VkBool32 surfaceExtFound = 0;
     VkBool32 platformSurfaceExtFound = 0;
+    VkBool32 kmsExtFound = 0;
     memset(demo->extension_names, 0, sizeof(demo->extension_names));
 
     err = vkEnumerateInstanceExtensionProperties(
@@ -3147,6 +3151,11 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
             }
 #endif
+	    if (!strcmp(VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME,
+			instance_extensions[i].extensionName)) {
+		printf("found kms display extension\n");
+		demo->extension_names[demo->enabled_extension_count++] = VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME;
+	    }
             if (!strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
                 if (demo->validate) {
@@ -3298,6 +3307,12 @@ static void demo_init_vk(struct demo *demo) {
                  "vkCreateInstance Failure");
     }
 
+    VkKmsDisplayInfoKEITHP display_info = {
+	.fd = open("/dev/dri/renderD128", 2),
+    };
+
+    vkSetKmsDisplayInfoKEITHP(demo->inst, &display_info);
+
     /* Make initial call to query gpu_count, then second call for gpu info*/
     err = vkEnumeratePhysicalDevices(demo->inst, &gpu_count, NULL);
     assert(!err && gpu_count > 0);
@@ -3316,6 +3331,7 @@ static void demo_init_vk(struct demo *demo) {
                  "additional information.\n",
                  "vkEnumeratePhysicalDevices Failure");
     }
+    close(display_info.fd);
 
     /* Look for device extensions */
     uint32_t device_extension_count = 0;
