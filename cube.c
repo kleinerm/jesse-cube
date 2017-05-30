@@ -36,8 +36,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR)
+#include <unistd.h>
+#if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
 #include <X11/Xutil.h>
+#endif
+#if defined (VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#include <xcb/xcb.h>
+#include <xcb/randr.h>
 #endif
 
 #ifdef _WIN32
@@ -54,6 +59,8 @@
 #else
 #include <vulkan/vulkan.h>
 #endif
+
+#include <vulkan/vulkan_keithp.h>
 
 #include <vulkan/vk_sdk_platform.h>
 #include "linmath.h"
@@ -325,7 +332,7 @@ struct demo {
     Display *display;
     Window xlib_window;
     Atom xlib_wm_delete_window;
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
     Display *display;
     xcb_connection_t *connection;
     xcb_screen_t *screen;
@@ -345,6 +352,7 @@ struct demo {
     void *window;
 #endif
     VkSurfaceKHR surface;
+    VkKmsDisplayInfoKEITHP display_info;
     bool prepared;
     bool use_staging_buffer;
     bool separate_present_queue;
@@ -2406,8 +2414,7 @@ static void demo_cleanup(struct demo *demo) {
 #if defined(VK_USE_PLATFORM_XLIB_KHR)
     XDestroyWindow(demo->display, demo->xlib_window);
     XCloseDisplay(demo->display);
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
-    xcb_destroy_window(demo->connection, demo->xcb_window);
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
     xcb_disconnect(demo->connection);
     free(demo->atom_wm_delete_window);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
@@ -3005,6 +3012,149 @@ static VkBool32 demo_check_layers(uint32_t check_count, char **check_names,
     return 1;
 }
 
+static VkBool32 fill_in_display_info(struct demo *demo)
+{
+    VkKmsDisplayInfoKEITHP *display_info = &demo->display_info;
+
+    if (getenv("CUBE_NATIVE")) {
+	    display_info->fd = open("/dev/dri/card0", 2);
+	    display_info->sType = VK_STRUCTURE_TYPE_KMS_DISPLAY_INFO_KEITHP;
+	    display_info->pNext = NULL;
+	    return display_info->fd >= 0;
+    }
+
+    xcb_connection_t *connection;
+    int screen = 0;
+    int fd;
+    drmModeResPtr mode_res;
+    drmModeConnectorPtr mode_connector;
+    drmModeModeInfoPtr mode, mode_copy;
+    const xcb_setup_t *setup;
+    xcb_screen_iterator_t iter;
+    int scr;
+
+    demo->connection = xcb_connect(NULL, &scr);
+    if (xcb_connection_has_error(demo->connection) > 0) {
+        printf("Cannot find a compatible Vulkan installable client driver "
+               "(ICD).\nExiting ...\n");
+        fflush(stdout);
+        exit(1);
+    }
+
+    setup = xcb_get_setup(demo->connection);
+    iter = xcb_setup_roots_iterator(setup);
+    while (scr-- > 0)
+        xcb_screen_next(&iter);
+
+    demo->screen = iter.data;
+
+    connection = demo->connection;
+
+    xcb_randr_query_version_cookie_t rqv_c = xcb_randr_query_version(connection,
+								     XCB_RANDR_MAJOR_VERSION,
+								     XCB_RANDR_MINOR_VERSION);
+    xcb_randr_query_version_reply_t *rqv_r = xcb_randr_query_version_reply(connection, rqv_c, NULL);
+
+    if (!rqv_r || rqv_r->minor_version < 6) {
+	printf("No new-enough RandR version\n");
+	return 0;
+    }
+
+    xcb_screen_iterator_t s_i;
+
+    int i_s = 0;
+
+    for (s_i = xcb_setup_roots_iterator(xcb_get_setup(connection));
+	 s_i.rem;
+	 xcb_screen_next(&s_i), i_s++) {
+	printf ("index %d screen %d\n", s_i.index, screen);
+	if (i_s == screen)
+	    break;
+    }
+
+    xcb_window_t root = s_i.data->root;
+
+    printf("root %x\n", root);
+
+    xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
+
+    xcb_randr_get_screen_resources_reply_t *gsr_r = xcb_randr_get_screen_resources_reply(connection, gsr_c, NULL);
+
+    if (!gsr_r) {
+	printf("get_screen_resources failed\n");
+	return 0;
+    }
+
+    xcb_randr_output_t *ro = xcb_randr_get_screen_resources_outputs(gsr_r);
+    int o, c;
+
+    xcb_randr_output_t output = 0;
+
+    /* Find a connected but idle output */
+    for (o = 0; output == 0 && o < gsr_r->num_outputs; o++) {
+	xcb_randr_get_output_info_cookie_t goi_c = xcb_randr_get_output_info(connection, ro[o], gsr_r->config_timestamp);
+
+	xcb_randr_get_output_info_reply_t *goi_r = xcb_randr_get_output_info_reply(connection, goi_c, NULL);
+
+	/* Find the first connected but unused output */
+	if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED &&
+	    goi_r->crtc == 0) {
+	    output = ro[o];
+	}
+
+	free(goi_r);
+    }
+
+    xcb_randr_crtc_t *rc = xcb_randr_get_screen_resources_crtcs(gsr_r);
+
+    xcb_randr_crtc_t crtc = 0;
+
+    /* Find an idle crtc */
+    for (c = 0; crtc == 0 && c < gsr_r->num_crtcs; c++) {
+	xcb_randr_get_crtc_info_cookie_t gci_c = xcb_randr_get_crtc_info(connection, rc[c], gsr_r->config_timestamp);
+
+	xcb_randr_get_crtc_info_reply_t *gci_r = xcb_randr_get_crtc_info_reply(connection, gci_c, NULL);
+
+	/* Find the first connected but unused crtc */
+	if (gci_r->mode == 0)
+	    crtc = rc[c];
+
+	free(gci_r);
+    }
+
+    free(gsr_r);
+
+    printf("output %x crtc %x\n", output, crtc);
+
+    xcb_randr_lease_t lease = xcb_generate_id(connection);
+
+    xcb_randr_create_lease_cookie_t rcl_c = xcb_randr_create_lease(connection,
+								   root,
+								   lease,
+								   1,
+								   1,
+								   &crtc,
+								   &output);
+    xcb_randr_create_lease_reply_t *rcl_r = xcb_randr_create_lease_reply(connection, rcl_c, NULL);
+
+    if (!rcl_r) {
+	printf("create_lease failed\n");
+	return 0;
+    }
+
+    int *rcl_f = xcb_randr_create_lease_reply_fds(connection, rcl_r);
+
+    fd = rcl_f[0];
+
+    printf("fd %d\n", fd);
+
+    display_info->sType = VK_STRUCTURE_TYPE_KMS_DISPLAY_INFO_KEITHP;
+    display_info->pNext = NULL;
+    display_info->fd = fd;
+
+    return 1;
+}
+
 static void demo_init_vk(struct demo *demo) {
     VkResult err;
     uint32_t instance_extension_count = 0;
@@ -3078,6 +3228,7 @@ static void demo_init_vk(struct demo *demo) {
     VkBool32 surfaceExtFound = 0;
     VkBool32 platformSurfaceExtFound = 0;
     VkBool32 kmsExtFound = 0;
+    VkBool32 displayExtFound = 0;
     memset(demo->extension_names, 0, sizeof(demo->extension_names));
 
     err = vkEnumerateInstanceExtensionProperties(
@@ -3154,6 +3305,7 @@ static void demo_init_vk(struct demo *demo) {
 	    if (!strcmp(VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME,
 			instance_extensions[i].extensionName)) {
 		printf("found kms display extension\n");
+		kmsExtFound = 1;
 		demo->extension_names[demo->enabled_extension_count++] = VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME;
 	    }
             if (!strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
@@ -3272,7 +3424,7 @@ static void demo_init_vk(struct demo *demo) {
     VkValidationFlagsEXT val_flags;
     if (demo->validate) {
         dbgCreateInfoTemp.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT;
-        dbgCreateInfoTemp.pNext = NULL;
+        dbgCreateInfoTemp.pNext = inst_info.pNext;
         dbgCreateInfoTemp.pfnCallback = demo->use_break ? BreakCallback : dbgFunc;
         dbgCreateInfoTemp.pUserData = demo;
         dbgCreateInfoTemp.flags =
@@ -3290,6 +3442,13 @@ static void demo_init_vk(struct demo *demo) {
 
     uint32_t gpu_count;
 
+    if (kmsExtFound) {
+	if (fill_in_display_info(demo)) {
+	    demo->display_info.pNext = inst_info.pNext;
+	    inst_info.pNext = &demo->display_info;
+	}
+    }
+
     err = vkCreateInstance(&inst_info, NULL, &demo->inst);
     if (err == VK_ERROR_INCOMPATIBLE_DRIVER) {
         ERR_EXIT("Cannot find a compatible Vulkan installable client driver "
@@ -3306,12 +3465,6 @@ static void demo_init_vk(struct demo *demo) {
                  "the Getting Started guide for additional information.\n",
                  "vkCreateInstance Failure");
     }
-
-    VkKmsDisplayInfoKEITHP display_info = {
-	.fd = open("/dev/dri/renderD128", 2),
-    };
-
-    vkSetKmsDisplayInfoKEITHP(demo->inst, &display_info);
 
     /* Make initial call to query gpu_count, then second call for gpu info*/
     err = vkEnumeratePhysicalDevices(demo->inst, &gpu_count, NULL);
@@ -3331,7 +3484,31 @@ static void demo_init_vk(struct demo *demo) {
                  "additional information.\n",
                  "vkEnumeratePhysicalDevices Failure");
     }
-    close(display_info.fd);
+
+    if (kmsExtFound)
+	close(demo->display_info.fd);
+
+    if (displayExtFound) {
+	uint32_t		display_property_count = 0;
+	VkDisplayPropertiesKHR	*display_properties;
+	err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, NULL);
+	if (err != VK_SUCCESS)
+	    ERR_EXIT("Cannot enumerate physical device display properties\n",
+		     "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
+
+	display_properties = calloc(display_property_count, sizeof (VkDisplayPropertiesKHR));
+	err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, display_properties);
+	if (err != VK_SUCCESS)
+	    ERR_EXIT("Cannot enumerate physical device display properties\n",
+		     "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
+
+	for (uint32_t i = 0; i < display_property_count; i++) {
+	    printf("name %s %dx%d pixels\n",
+		   display_properties[i].displayName,
+		   display_properties[i].physicalResolution.width,
+		   display_properties[i].physicalResolution.height);
+	}
+    }
 
     /* Look for device extensions */
     uint32_t device_extension_count = 0;
