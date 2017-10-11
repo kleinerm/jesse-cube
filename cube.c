@@ -41,6 +41,7 @@
 #include <X11/Xutil.h>
 #endif
 #if defined (VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#include <X11/Xlib-xcb.h>
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
 #endif
@@ -403,6 +404,8 @@ struct demo {
     PFN_vkQueuePresentKHR fpQueuePresentKHR;
     PFN_vkGetRefreshCycleDurationGOOGLE fpGetRefreshCycleDurationGOOGLE;
     PFN_vkGetPastPresentationTimingGOOGLE fpGetPastPresentationTimingGOOGLE;
+//    PFN_vkRegisterDisplayEventEXT fpRegisterDisplayEventEXT;
+//    PFN_vkGetSwapchainCounterEXT fpGetSwapchainCounterEXT;
     uint32_t swapchainImageCount;
     VkSwapchainKHR swapchain;
     SwapchainImageResources *swapchain_image_resources;
@@ -1121,6 +1124,17 @@ static void demo_draw(struct demo *demo) {
     err = demo->fpQueuePresentKHR(demo->present_queue, &present);
     demo->frame_index += 1;
     demo->frame_index %= FRAME_LAG;
+
+#if 0
+    if (demo->fpGetSwapchainCounterEXT) {
+	uint64_t counter;
+
+	demo->fpGetSwapchainCounterEXT(demo->device,
+				       demo->swapchain,
+				       0,
+				       &counter);
+    }
+#endif
 
     if (err == VK_ERROR_OUT_OF_DATE_KHR) {
         // demo->swapchain is out of date (e.g. the window was resized) and
@@ -3012,28 +3026,20 @@ static VkBool32 demo_check_layers(uint32_t check_count, char **check_names,
     return 1;
 }
 
-static VkBool32 fill_in_display_info(struct demo *demo)
+static VkBool32 get_keithp_info(struct demo *demo)
 {
     VkKmsDisplayInfoKEITHP *display_info = &demo->display_info;
-
-    if (getenv("CUBE_NATIVE")) {
-	    display_info->fd = open("/dev/dri/card0", 2);
-	    display_info->sType = VK_STRUCTURE_TYPE_KMS_DISPLAY_INFO_KEITHP;
-	    display_info->pNext = NULL;
-	    return display_info->fd >= 0;
-    }
 
     xcb_connection_t *connection;
     int screen = 0;
     int fd;
-    drmModeResPtr mode_res;
-    drmModeConnectorPtr mode_connector;
-    drmModeModeInfoPtr mode, mode_copy;
     const xcb_setup_t *setup;
     xcb_screen_iterator_t iter;
-    int scr;
+    Display *dpy = XOpenDisplay(NULL);
+    int scr = DefaultScreen(dpy);
 
-    demo->connection = xcb_connect(NULL, &scr);
+    demo->connection = XGetXCBConnection(dpy);
+
     if (xcb_connection_has_error(demo->connection) > 0) {
         printf("Cannot find a compatible Vulkan installable client driver "
                "(ICD).\nExiting ...\n");
@@ -3151,6 +3157,107 @@ static VkBool32 fill_in_display_info(struct demo *demo)
     display_info->sType = VK_STRUCTURE_TYPE_KMS_DISPLAY_INFO_KEITHP;
     display_info->pNext = NULL;
     display_info->fd = fd;
+}
+
+static VkBool32 fill_in_display_info(struct demo *demo)
+{
+    xcb_connection_t *connection;
+    int screen = 0;
+    int fd;
+    const xcb_setup_t *setup;
+    xcb_screen_iterator_t iter;
+    Display *dpy = XOpenDisplay(NULL);
+    int scr = DefaultScreen(dpy);
+
+    demo->connection = XGetXCBConnection(dpy);
+
+    if (xcb_connection_has_error(demo->connection) > 0) {
+        printf("Cannot find a compatible Vulkan installable client driver "
+               "(ICD).\nExiting ...\n");
+        fflush(stdout);
+        exit(1);
+    }
+
+    setup = xcb_get_setup(demo->connection);
+    iter = xcb_setup_roots_iterator(setup);
+    while (scr-- > 0)
+        xcb_screen_next(&iter);
+
+    demo->screen = iter.data;
+
+    connection = demo->connection;
+
+    xcb_randr_query_version_cookie_t rqv_c = xcb_randr_query_version(connection,
+								     XCB_RANDR_MAJOR_VERSION,
+								     XCB_RANDR_MINOR_VERSION);
+    xcb_randr_query_version_reply_t *rqv_r = xcb_randr_query_version_reply(connection, rqv_c, NULL);
+
+    if (!rqv_r || rqv_r->minor_version < 6) {
+	printf("No new-enough RandR version\n");
+	return 0;
+    }
+
+    xcb_screen_iterator_t s_i;
+
+    int i_s = 0;
+
+    for (s_i = xcb_setup_roots_iterator(xcb_get_setup(connection));
+	 s_i.rem;
+	 xcb_screen_next(&s_i), i_s++) {
+	printf ("index %d screen %d\n", s_i.index, screen);
+	if (i_s == screen)
+	    break;
+    }
+
+    xcb_window_t root = s_i.data->root;
+
+    printf("root %x\n", root);
+
+    xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
+
+    xcb_randr_get_screen_resources_reply_t *gsr_r = xcb_randr_get_screen_resources_reply(connection, gsr_c, NULL);
+
+    if (!gsr_r) {
+	printf("get_screen_resources failed\n");
+	return 0;
+    }
+
+    xcb_randr_output_t *ro = xcb_randr_get_screen_resources_outputs(gsr_r);
+    int o, c;
+
+    xcb_randr_output_t output = 0;
+
+    /* Find a connected but idle output */
+    for (o = 0; output == 0 && o < gsr_r->num_outputs; o++) {
+	xcb_randr_get_output_info_cookie_t goi_c = xcb_randr_get_output_info(connection, ro[o], gsr_r->config_timestamp);
+
+	xcb_randr_get_output_info_reply_t *goi_r = xcb_randr_get_output_info_reply(connection, goi_c, NULL);
+
+	/* Find the first connected but unused output */
+	if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED)
+	    output = ro[o];
+
+	free(goi_r);
+    }
+
+    VkDisplayKHR khr_display;
+
+    XInitThreads();
+    demo->display = XOpenDisplay(NULL);
+
+    PFN_vkGetRandROutputDisplayEXT 	m_pGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkGetRandROutputDisplayEXT" );
+    PFN_vkAcquireXlibDisplayEXT		m_pAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkAcquireXlibDisplayEXT" );
+
+    printf("Using output 0x%x\n", output);
+
+    m_pGetRandROutputDisplayEXT(demo->gpu,
+			       demo->display,
+			       output,
+			       &khr_display);
+
+    m_pAcquireXlibDisplayEXT(demo->gpu,
+			    demo->display,
+			    khr_display);
 
     return 1;
 }
@@ -3281,6 +3388,7 @@ static void demo_init_vk(struct demo *demo) {
             if (!strcmp(VK_KHR_DISPLAY_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
                 platformSurfaceExtFound = 1;
+		displayExtFound = 1;
                 demo->extension_names[demo->enabled_extension_count++] =
                     VK_KHR_DISPLAY_EXTENSION_NAME;
             }
@@ -3302,6 +3410,11 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
             }
 #endif
+	    if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
+			instance_extensions[i].extensionName)) {
+		    printf("found xlib display extension\n");
+		demo->extension_names[demo->enabled_extension_count++] = VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME;
+	    }
 	    if (!strcmp(VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME,
 			instance_extensions[i].extensionName)) {
 		printf("found kms display extension\n");
@@ -3442,8 +3555,8 @@ static void demo_init_vk(struct demo *demo) {
 
     uint32_t gpu_count;
 
-    if (kmsExtFound) {
-	if (fill_in_display_info(demo)) {
+    if (kmsExtFound && getenv ("CUBE_NATIVE")) {
+	if (get_keithp_info(demo)) {
 	    demo->display_info.pNext = inst_info.pNext;
 	    inst_info.pNext = &demo->display_info;
 	}
@@ -3485,8 +3598,8 @@ static void demo_init_vk(struct demo *demo) {
                  "vkEnumeratePhysicalDevices Failure");
     }
 
-    if (kmsExtFound)
-	close(demo->display_info.fd);
+    if (!getenv("CUBE_NATIVE"))
+	    fill_in_display_info(demo);
 
     if (displayExtFound) {
 	uint32_t		display_property_count = 0;
@@ -3836,6 +3949,8 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         GET_DEVICE_PROC_ADDR(demo->device, GetRefreshCycleDurationGOOGLE);
         GET_DEVICE_PROC_ADDR(demo->device, GetPastPresentationTimingGOOGLE);
     }
+//    GET_DEVICE_PROC_ADDR(demo->device, RegisterDisplayEventEXT);
+//    GET_DEVICE_PROC_ADDR(demo->device, GetSwapchainCounterEXT);
 
     vkGetDeviceQueue(demo->device, demo->graphics_queue_family_index, 0,
                      &demo->graphics_queue);
