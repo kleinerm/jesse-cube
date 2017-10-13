@@ -3168,6 +3168,7 @@ static VkBool32 fill_in_display_info(struct demo *demo)
     xcb_screen_iterator_t iter;
     Display *dpy = XOpenDisplay(NULL);
     int scr = DefaultScreen(dpy);
+    VkResult err;
 
     demo->connection = XGetXCBConnection(dpy);
 
@@ -3250,14 +3251,18 @@ static VkBool32 fill_in_display_info(struct demo *demo)
 
     printf("Using output 0x%x\n", output);
 
-    m_pGetRandROutputDisplayEXT(demo->gpu,
-			       demo->display,
-			       output,
-			       &khr_display);
+    err = m_pGetRandROutputDisplayEXT(demo->gpu,
+				      demo->display,
+				      output,
+				      &khr_display);
 
-    m_pAcquireXlibDisplayEXT(demo->gpu,
-			    demo->display,
-			    khr_display);
+    assert (!err);
+
+    err = m_pAcquireXlibDisplayEXT(demo->gpu,
+				   demo->display,
+				   khr_display);
+
+    assert (!err);
 
     return 1;
 }
