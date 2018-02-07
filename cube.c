@@ -362,7 +362,6 @@ struct demo {
 
     bool VK_GOOGLE_display_timing_enabled;
     bool syncd_with_actual_presents;
-    uint64_t refresh_duration;
     uint64_t refresh_duration_multiplier;
     uint64_t target_IPD;  // image present duration (inverse of frame rate)
     uint64_t prev_desired_present_time;
@@ -813,13 +812,21 @@ void demo_update_data_buffer(struct demo *demo) {
     int matrixSize = sizeof(MVP);
     uint8_t *pData;
     VkResult U_ASSERT_ONLY err;
+    float spin_angle;
 
     mat4x4_mul(VP, demo->projection_matrix, demo->view_matrix);
 
     // Rotate around the Y axis
     mat4x4_dup(Model, demo->model_matrix);
+
+    spin_angle = demo->spin_angle;
+
+    /* Make the cube spin at a constant rate */
+    if (demo->VK_GOOGLE_display_timing_enabled)
+	spin_angle *= (float) demo->target_IPD / (1.0f / 30.0f * 1e9);
+
     mat4x4_rotate(demo->model_matrix, Model, 0.0f, 1.0f, 0.0f,
-                  (float)degreesToRadians(demo->spin_angle));
+                  (float)degreesToRadians(spin_angle));
     mat4x4_mul(MVP, VP, demo->model_matrix);
 
     err = vkMapMemory(demo->device,
@@ -830,6 +837,17 @@ void demo_update_data_buffer(struct demo *demo) {
     memcpy(pData, (const void *)&MVP[0][0], matrixSize);
 
     vkUnmapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].uniform_memory);
+}
+
+static uint64_t
+DemoRefreshDuration(struct demo *demo) {
+   VkRefreshCycleDurationGOOGLE rc_dur;
+   VkResult err;
+   err = demo->fpGetRefreshCycleDurationGOOGLE(demo->device,
+					       demo->swapchain,
+					       &rc_dur);
+   assert(!err);
+   return rc_dur.refreshDuration;
 }
 
 void DemoUpdateTargetIPD(struct demo *demo) {
@@ -853,6 +871,8 @@ void DemoUpdateTargetIPD(struct demo *demo) {
                                                       past);
         assert(!err);
 
+	uint64_t refresh_duration = DemoRefreshDuration(demo);
+
         bool early = false;
         bool late = false;
         bool calibrate_next = false;
@@ -874,7 +894,7 @@ void DemoUpdateTargetIPD(struct demo *demo) {
             } else if (CanPresentEarlier(past[i].earliestPresentTime,
                                          past[i].actualPresentTime,
                                          past[i].presentMargin,
-                                         demo->refresh_duration)) {
+                                         refresh_duration)) {
                 // This image could have been presented earlier.  We don't want
                 // to decrease the target_IPD until we've seen early presents
                 // for at least two seconds.
@@ -899,7 +919,7 @@ void DemoUpdateTargetIPD(struct demo *demo) {
                 demo->last_late_id = 0;
             } else if (ActualTimeLate(past[i].desiredPresentTime,
                                       past[i].actualPresentTime,
-                                      demo->refresh_duration)) {
+                                      refresh_duration)) {
                 // This image was presented after its desired time.  Since
                 // there's a delay between calling vkQueuePresentKHR and when
                 // we get the timing data, several presents may have been late.
@@ -941,8 +961,6 @@ void DemoUpdateTargetIPD(struct demo *demo) {
                 // try to go faster.
                 demo->refresh_duration_multiplier = 1;
             }
-            demo->target_IPD =
-                demo->refresh_duration * demo->refresh_duration_multiplier;
         }
         if (late) {
             // Since we found a new instance of a late present, we want to
@@ -951,12 +969,12 @@ void DemoUpdateTargetIPD(struct demo *demo) {
             // TODO(ianelliott): Try to calculate a better target_IPD based
             // on the most recently-seen present (this is overly-simplistic).
             demo->refresh_duration_multiplier++;
-            demo->target_IPD =
-                demo->refresh_duration * demo->refresh_duration_multiplier;
         }
+        demo->target_IPD =
+		refresh_duration * demo->refresh_duration_multiplier;
 
         if (calibrate_next) {
-            int64_t multiple = demo->next_present_id - past[count-1].presentID;
+            int64_t multiple = demo->next_present_id - past[count-1].presentID - 1;
             demo->prev_desired_present_time =
                 (past[count-1].actualPresentTime +
                  (multiple * demo->target_IPD));
@@ -1095,7 +1113,7 @@ static void demo_draw(struct demo *demo) {
             // takes.  Let's make a grossly-simplified assumption that the
             // desiredPresentTime should be half way between now and
             // now+target_IPD.  We will adjust over time.
-            uint64_t curtime = getTimeInNanoseconds();
+            uint64_t curtime = 0 & getTimeInNanoseconds();
             if (curtime == 0) {
                 // Since we didn't find out the current time, don't give a
                 // desiredPresentTime:
@@ -1368,12 +1386,12 @@ static void demo_prepare_buffers(struct demo *demo) {
                                                     demo->swapchain,
                                                     &rc_dur);
         assert(!err);
-        demo->refresh_duration = rc_dur.refreshDuration;
 
         demo->syncd_with_actual_presents = false;
         // Initially target 1X the refresh duration:
-        demo->target_IPD = demo->refresh_duration;
         demo->refresh_duration_multiplier = 1;
+        demo->target_IPD = DemoRefreshDuration(demo) * demo->refresh_duration_multiplier;
+
         demo->prev_desired_present_time = 0;
         demo->next_present_id = 1;
     }
@@ -3026,6 +3044,7 @@ static VkBool32 demo_check_layers(uint32_t check_count, char **check_names,
     return 1;
 }
 
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
 static VkBool32 get_keithp_info(struct demo *demo)
 {
     VkKmsDisplayInfoKEITHP *display_info = &demo->display_info;
@@ -3167,9 +3186,13 @@ static VkBool32 fill_in_display_info(struct demo *demo)
     const xcb_setup_t *setup;
     xcb_screen_iterator_t iter;
     Display *dpy = XOpenDisplay(NULL);
-    int scr = DefaultScreen(dpy);
+    int scr;
     VkResult err;
 
+    if (!dpy)
+	    return true;
+
+    scr = DefaultScreen(dpy);
     demo->connection = XGetXCBConnection(dpy);
 
     if (xcb_connection_has_error(demo->connection) > 0) {
@@ -3266,6 +3289,7 @@ static VkBool32 fill_in_display_info(struct demo *demo)
 
     return 1;
 }
+#endif
 
 static void demo_init_vk(struct demo *demo) {
     VkResult err;
@@ -3415,6 +3439,7 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
             }
 #endif
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
 	    if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
 			instance_extensions[i].extensionName)) {
 		    printf("found xlib display extension\n");
@@ -3426,6 +3451,7 @@ static void demo_init_vk(struct demo *demo) {
 		kmsExtFound = 1;
 		demo->extension_names[demo->enabled_extension_count++] = VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME;
 	    }
+#endif
             if (!strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
                 if (demo->validate) {
@@ -3560,12 +3586,14 @@ static void demo_init_vk(struct demo *demo) {
 
     uint32_t gpu_count;
 
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
     if (kmsExtFound && getenv ("CUBE_NATIVE")) {
 	if (get_keithp_info(demo)) {
 	    demo->display_info.pNext = inst_info.pNext;
 	    inst_info.pNext = &demo->display_info;
 	}
     }
+#endif
 
     err = vkCreateInstance(&inst_info, NULL, &demo->inst);
     if (err == VK_ERROR_INCOMPATIBLE_DRIVER) {
@@ -3603,8 +3631,10 @@ static void demo_init_vk(struct demo *demo) {
                  "vkEnumeratePhysicalDevices Failure");
     }
 
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
     if (!getenv("CUBE_NATIVE"))
 	    fill_in_display_info(demo);
+#endif
 
     if (displayExtFound) {
 	uint32_t		display_property_count = 0;
