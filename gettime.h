@@ -55,18 +55,18 @@ uint64_t getTimeInNanoseconds(void) {
 #elif defined(__unix__) || defined(__linux) || defined(__linux__) || defined(__ANDROID__) || defined(__QNX__)
     struct timespec currTime;
     clock_gettime(CLOCK_MONOTONIC, &currTime);
-    return (uint64_t)currTime.tv_sec * 1000000 + ((uint64_t)currTime.tv_nsec / 1000);
+    return (uint64_t)currTime.tv_sec * 1000000000 + ((uint64_t)currTime.tv_nsec);
 
 #elif defined(__EPOC32__)
     struct timespec currTime;
     /* Symbian supports only realtime clock for clock_gettime. */
     clock_gettime(CLOCK_REALTIME, &currTime);
-    return (uint64_t)currTime.tv_sec * 1000000 + ((uint64_t)currTime.tv_nsec / 1000);
+    return (uint64_t)currTime.tv_sec * 1000000000 + ((uint64_t)currTime.tv_nsec);
 
 #elif defined(__APPLE__)
     struct timeval currTime;
     gettimeofday(&currTime, NULL);
-    return (uint64_t)currTime.tv_sec * 1000000 + (uint64_t)currTime.tv_usec;
+    return (uint64_t)currTime.tv_sec * 1000000000 + (uint64_t)currTime.tv_usec * 1000;
 
 #else
 #error "Not implemented for target OS"

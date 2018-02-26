@@ -875,6 +875,15 @@ void DemoUpdateTargetIPD(struct demo *demo) {
         bool late = false;
         bool calibrate_next = false;
         for (uint32_t i = 0 ; i < count ; i++) {
+
+            printf("%d: desired %f actual %f earliest %f gap %f\n",
+                   i,
+                   past[i].desiredPresentTime / 1e9,
+                   past[i].actualPresentTime / 1e9,
+                   past[i].earliestPresentTime / 1e9,
+                   past[i].actualPresentTime / 1e9 - past[i].earliestPresentTime / 1e9);
+
+
             if (!demo->syncd_with_actual_presents) {
                 // This is the first time that we've received an
                 // actualPresentTime for this swapchain.  In order to not
@@ -1111,7 +1120,7 @@ static void demo_draw(struct demo *demo) {
             // takes.  Let's make a grossly-simplified assumption that the
             // desiredPresentTime should be half way between now and
             // now+target_IPD.  We will adjust over time.
-            uint64_t curtime = 0 & getTimeInNanoseconds();
+            uint64_t curtime = getTimeInNanoseconds();
             if (curtime == 0) {
                 // Since we didn't find out the current time, don't give a
                 // desiredPresentTime:
@@ -1123,6 +1132,11 @@ static void demo_draw(struct demo *demo) {
             ptime.desiredPresentTime = (demo->prev_desired_present_time +
                                         demo->target_IPD);            
         }
+
+        printf("\tdesired present time %f delta %f\n",
+               ptime.desiredPresentTime / 1e9,
+               ptime.desiredPresentTime / 1e9 - demo->prev_desired_present_time / 1e9);
+
         ptime.presentID = demo->next_present_id++;
         demo->prev_desired_present_time = ptime.desiredPresentTime;
 
@@ -1330,6 +1344,7 @@ static void demo_prepare_buffers(struct demo *demo) {
         // AMD driver times out waiting on fences used in AcquireNextImage on
         // a swapchain that is subsequently destroyed before the wait.
         vkWaitForFences(demo->device, FRAME_LAG, demo->fences, VK_TRUE, UINT64_MAX);
+//        vkResetFences(demo->device, FRAME_LAG, demo->fences);
         demo->fpDestroySwapchainKHR(demo->device, oldSwapchain, NULL);
     }
 
@@ -3886,7 +3901,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     // Create semaphores to synchronize acquiring presentable buffers before
     // rendering and waiting for drawing to be complete before presenting
-    VkSemaphoreCreateInfo semaphoreCreateInfo = {
+    const VkSemaphoreCreateInfo semaphoreCreateInfo = {
         .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         .pNext = NULL,
         .flags = 0,
@@ -3894,7 +3909,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     // Create fences that we can use to throttle if we get too far
     // ahead of the image presents
-    VkFenceCreateInfo fence_ci = {
+    const VkFenceCreateInfo fence_ci = {
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .pNext = NULL,
         .flags = VK_FENCE_CREATE_SIGNALED_BIT
