@@ -2888,7 +2888,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     uint32_t display_count;
     uint32_t mode_count;
     uint32_t plane_count;
-    VkDisplayPropertiesKHR display_props;
+    VkDisplayPropertiesKHR *display_props;
     VkDisplayKHR display;
     VkDisplayModePropertiesKHR mode_props;
     VkDisplayPlanePropertiesKHR *plane_props;
@@ -2907,11 +2907,11 @@ static VkResult demo_create_display_surface(struct demo *demo) {
         exit(1);
     }
 
-    display_count = 1;
-    err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, &display_props);
+    display_props = calloc(display_count, sizeof (VkDisplayPropertiesKHR));
+    err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, display_props);
     assert(!err || (err == VK_INCOMPLETE));
 
-    display = display_props.display;
+    display = display_props[display_count-1].display;
 
     // Get the first mode of the display
     err = vkGetDisplayModePropertiesKHR(demo->gpu, display, &mode_count, NULL);
