@@ -3950,11 +3950,64 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     // supported format will be returned.
     if (formatCount == 1 && surfFormats[0].format == VK_FORMAT_UNDEFINED) {
         demo->format = VK_FORMAT_B8G8R8A8_UNORM;
+        demo->color_space = surfFormats[0].colorSpace;
     } else {
+        int i;
+
         assert(formatCount >= 1);
-        demo->format = surfFormats[0].format;
+
+        // Try to get RGBA16F float, then RGB10A2 as second choice, then
+        // a fallback to default RGBA8:
+        demo->format = VK_FORMAT_UNDEFINED;
+        printf("Number of surface formats: %d\n", formatCount);
+
+        for (i = 0; i < formatCount; i++) {
+            switch (surfFormats[i].format) {
+                case VK_FORMAT_R16G16B16A16_SFLOAT:
+                    printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
+                    break;
+
+                case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+                    printf("[%i] Swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
+                    break;
+
+                case VK_FORMAT_B8G8R8A8_SRGB:
+                    printf("[%i] Swapchain format VK_FORMAT_B8G8R8A8_SRGB\n", i);
+                    break;
+
+                case VK_FORMAT_B8G8R8A8_UNORM:
+                    printf("[%i] Swapchain format VK_FORMAT_B8G8R8A8_UNORM\n", i);
+                    break;
+
+                default:
+                    printf("[%i] Swapchain format unknown 0x%x\n", i, surfFormats[i].format);
+            }
+        }
+
+        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+            if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                printf("[%i] Using swapchain format RGBA16F\n", i);
+                demo->format = surfFormats[i].format;
+                demo->color_space = surfFormats[i].colorSpace;
+                break;
+            }
+        }
+
+        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+            if (surfFormats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+                printf("[%i] Using swapchain format RGB10A2\n", i);
+                demo->format = surfFormats[i].format;
+                demo->color_space = surfFormats[i].colorSpace;
+                break;
+            }
+        }
+
+        if (demo->format == VK_FORMAT_UNDEFINED) {
+            printf("Using default fallback swapchain format VK_FORMAT_B8G8R8A8_UNORM\n");
+            demo->format = surfFormats[0].format;
+            demo->color_space = surfFormats[0].colorSpace;
+        }
     }
-    demo->color_space = surfFormats[0].colorSpace;
 
     demo->quit = false;
     demo->curFrame = 0;
