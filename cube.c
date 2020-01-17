@@ -337,6 +337,7 @@ struct demo {
     xcb_screen_t *screen;
     xcb_window_t xcb_window;
     xcb_intern_atom_reply_t *atom_wm_delete_window;
+    bool leasedAlready;
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
     struct wl_display *display;
     struct wl_registry *registry;
@@ -2883,6 +2884,9 @@ static void demo_run(struct demo *demo) {
 }
 #elif defined(VK_USE_PLATFORM_MIR_KHR)
 #elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
+// Forward define prototype of helper function that is defined after us:
+static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display);
+
 static VkResult demo_create_display_surface(struct demo *demo) {
     VkResult U_ASSERT_ONLY err;
     uint32_t display_count;
@@ -2912,6 +2916,14 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     assert(!err || (err == VK_INCOMPLETE));
 
     display = display_props[display_count-1].display;
+
+    // 2nd try to lease the DRM display if needed. Will no-op if not running
+    // on X or already leased:
+    if (!get_x_lease(demo, display)) {
+        printf("Could not get X-Lease for output in pass II. Game over!\n");
+        fflush(stdout);
+        exit(1);
+    }
 
     // Get the first mode of the display
     err = vkGetDisplayModePropertiesKHR(demo->gpu, display, &mode_count, NULL);
@@ -3064,116 +3076,163 @@ static VkBool32 demo_check_layers(uint32_t check_count, char **check_names,
 
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
 
-static VkBool32 get_x_lease(struct demo *demo)
+static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 {
     xcb_connection_t *connection;
     int screen = 0;
     int fd;
     const xcb_setup_t *setup;
     xcb_screen_iterator_t iter;
-    Display *dpy = XOpenDisplay(NULL);
+    Display *dpy;
     int scr;
+    xcb_randr_output_t output = 0;
     VkResult err;
 
-    if (!dpy)
-	    return true;
+    // First pass, no X-Display connection yet?
+    if (!demo->display) {
+        // Try to get one:
+        dpy = XOpenDisplay(NULL);
 
-    scr = DefaultScreen(dpy);
-    demo->connection = XGetXCBConnection(dpy);
+        // None? We are not running under a X11 X-Server, but on the VT directly,
+        // no need for x-leasing, just no-op return with success:
+        if (!dpy)
+            return true;
 
-    if (xcb_connection_has_error(demo->connection) > 0) {
-        printf("Cannot find a compatible Vulkan installable client driver "
-               "(ICD).\nExiting ...\n");
-        fflush(stdout);
-        exit(1);
+        // Setup all the XCB stuff, screens, etc. find suitable RandR output
+        // to lease and display on:
+        scr = DefaultScreen(dpy);
+        demo->connection = XGetXCBConnection(dpy);
+
+        if (xcb_connection_has_error(demo->connection) > 0) {
+            printf("Cannot find a compatible Vulkan installable client driver "
+                "(ICD).\nExiting ...\n");
+            fflush(stdout);
+            exit(1);
+        }
+
+        setup = xcb_get_setup(demo->connection);
+        iter = xcb_setup_roots_iterator(setup);
+        while (scr-- > 0)
+            xcb_screen_next(&iter);
+
+        demo->screen = iter.data;
+
+        connection = demo->connection;
+
+        xcb_randr_query_version_cookie_t rqv_c = xcb_randr_query_version(connection,
+                                                                        XCB_RANDR_MAJOR_VERSION,
+                                                                        XCB_RANDR_MINOR_VERSION);
+        xcb_randr_query_version_reply_t *rqv_r = xcb_randr_query_version_reply(connection, rqv_c, NULL);
+
+        if (!rqv_r || rqv_r->minor_version < 6) {
+            printf("No new-enough RandR version\n");
+            return 0;
+        }
+
+        xcb_screen_iterator_t s_i;
+
+        int i_s = 0;
+
+        for (s_i = xcb_setup_roots_iterator(xcb_get_setup(connection));
+            s_i.rem;
+            xcb_screen_next(&s_i), i_s++) {
+            printf ("index %d screen %d\n", s_i.index, screen);
+            if (i_s == screen)
+                break;
+        }
+
+        xcb_window_t root = s_i.data->root;
+
+        printf("root %x\n", root);
+
+        xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
+
+        xcb_randr_get_screen_resources_reply_t *gsr_r = xcb_randr_get_screen_resources_reply(connection, gsr_c, NULL);
+
+        if (!gsr_r) {
+            printf("get_screen_resources failed\n");
+            return 0;
+        }
+
+        xcb_randr_output_t *ro = xcb_randr_get_screen_resources_outputs(gsr_r);
+        int o, c;
+
+        /* Find a connected but idle output */
+        output = 0;
+        for (o = 0; output == 0 && o < gsr_r->num_outputs; o++) {
+            xcb_randr_get_output_info_cookie_t goi_c = xcb_randr_get_output_info(connection, ro[o], gsr_r->config_timestamp);
+
+            xcb_randr_get_output_info_reply_t *goi_r = xcb_randr_get_output_info_reply(connection, goi_c, NULL);
+
+            /* Find the first connected but unused output */
+            if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED) {
+                output = ro[o];
+                printf("Found output %s.\n", xcb_randr_get_output_info_name(goi_r));
+            }
+
+            free(goi_r);
+        }
+
+        // VkDisplayKHR khr_display = NULL;
+
+        //XInitThreads();
+        demo->display = dpy; // XOpenDisplay(NULL);
     }
 
-    setup = xcb_get_setup(demo->connection);
-    iter = xcb_setup_roots_iterator(setup);
-    while (scr-- > 0)
-        xcb_screen_next(&iter);
+    // Running under an X-Server, and have X11 / XCB connections, screens etc.
 
-    demo->screen = iter.data;
-
-    connection = demo->connection;
-
-    xcb_randr_query_version_cookie_t rqv_c = xcb_randr_query_version(connection,
-								     XCB_RANDR_MAJOR_VERSION,
-								     XCB_RANDR_MINOR_VERSION);
-    xcb_randr_query_version_reply_t *rqv_r = xcb_randr_query_version_reply(connection, rqv_c, NULL);
-
-    if (!rqv_r || rqv_r->minor_version < 6) {
-	printf("No new-enough RandR version\n");
-	return 0;
-    }
-
-    xcb_screen_iterator_t s_i;
-
-    int i_s = 0;
-
-    for (s_i = xcb_setup_roots_iterator(xcb_get_setup(connection));
-	 s_i.rem;
-	 xcb_screen_next(&s_i), i_s++) {
-	printf ("index %d screen %d\n", s_i.index, screen);
-	if (i_s == screen)
-	    break;
-    }
-
-    xcb_window_t root = s_i.data->root;
-
-    printf("root %x\n", root);
-
-    xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
-
-    xcb_randr_get_screen_resources_reply_t *gsr_r = xcb_randr_get_screen_resources_reply(connection, gsr_c, NULL);
-
-    if (!gsr_r) {
-	printf("get_screen_resources failed\n");
-	return 0;
-    }
-
-    xcb_randr_output_t *ro = xcb_randr_get_screen_resources_outputs(gsr_r);
-    int o, c;
-
-    xcb_randr_output_t output = 0;
-
-    /* Find a connected but idle output */
-    for (o = 0; output == 0 && o < gsr_r->num_outputs; o++) {
-	xcb_randr_get_output_info_cookie_t goi_c = xcb_randr_get_output_info(connection, ro[o], gsr_r->config_timestamp);
-
-	xcb_randr_get_output_info_reply_t *goi_r = xcb_randr_get_output_info_reply(connection, goi_c, NULL);
-
-	/* Find the first connected but unused output */
-	if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED)
-	    output = ro[o];
-
-	free(goi_r);
-    }
-
-    VkDisplayKHR khr_display;
-
-    XInitThreads();
-    demo->display = XOpenDisplay(NULL);
-
+    // Get Extensions we need:
     PFN_vkGetRandROutputDisplayEXT 	m_pGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkGetRandROutputDisplayEXT" );
     PFN_vkAcquireXlibDisplayEXT		m_pAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkAcquireXlibDisplayEXT" );
 
-    printf("Using output 0x%x\n", output);
+    // Already leased?
+    if (demo->leasedAlready)
+        return true;
 
-    err = m_pGetRandROutputDisplayEXT(demo->gpu,
-				      demo->display,
-				      output,
-				      &khr_display);
+    // Is this the first pass, where we try to find the khr_display to lease via
+    // Vulkan RandR extension?
+    if (khr_display == NULL) {
+        // Yep: Map RandR output to khr_display, hopefully:
+        printf("Using output 0x%x\n", output);
 
-    assert (!err);
+        err = m_pGetRandROutputDisplayEXT(demo->gpu,
+                                        demo->display,
+                                        output,
+                                        &khr_display);
 
-    err = m_pAcquireXlibDisplayEXT(demo->gpu,
-				   demo->display,
-				   khr_display);
+        printf("err = %i\n", err);
+        assert (!err);
+        printf("Mapped to khr_display %p\n", khr_display);
 
-    assert (!err);
+        // Success?
+        if (khr_display == NULL) {
+            // Nope. Need to retry in 2nd pass:
+            printf("Failed to find khr_display for RandR output. Bailing for now, retrying later...\n");
+            return(false);
+        }
 
-    return 1;
+        // Yes. Try to lease it.
+    }
+    else {
+        // Nope. 2nd pass, just try to lease whatever was passed in as khr_display
+        // from our caller:
+        printf("Using khr_display %p passed in from caller in 2nd pass.\n", khr_display);
+    }
+
+    printf("Trying to acquire / lease khr_display %p, using gpu %p, X-Display %p\n", khr_display, demo->gpu, demo->display);
+    err = m_pAcquireXlibDisplayEXT(demo->gpu, demo->display, khr_display);
+    printf("err = %i\n", err);
+
+    //assert (!err);
+    if (err) {
+        printf("Leasing %p FAILED!\n", khr_display);
+        return false;
+    }
+
+    printf("Successfully leased %p !\n", khr_display);
+    demo->leasedAlready = true;
+
+    return true;
 }
 #endif
 
@@ -3511,7 +3570,8 @@ static void demo_init_vk(struct demo *demo) {
     }
 
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    get_x_lease(demo);
+    if (!get_x_lease(demo, NULL))
+        printf("Could not get X-Lease for output in pass I. Retrying later...\n");
 #endif
 
     if (displayExtFound) {
@@ -4075,8 +4135,8 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
     demo_init_vk(demo);
 
-    demo->width = 500;
-    demo->height = 500;
+    demo->width = 512;
+    demo->height = 512;
 
     demo->spin_angle = 4.0f;
     demo->spin_increment = 0.2f;
