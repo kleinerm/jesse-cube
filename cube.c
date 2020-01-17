@@ -44,6 +44,10 @@
 #include <X11/Xlib-xcb.h>
 #include <xcb/xcb.h>
 #include <xcb/randr.h>
+
+// MK:
+#include <GL/glx.h>
+#include <GL/gl.h>
 #endif
 
 #ifdef _WIN32
@@ -336,6 +340,10 @@ struct demo {
     xcb_connection_t *connection;
     xcb_screen_t *screen;
     xcb_window_t xcb_window;
+    int visualID;
+    GLXContext context;
+    GLXFBConfig fb_config;
+    GLXDrawable drawable;
     xcb_intern_atom_reply_t *atom_wm_delete_window;
     bool leasedAlready;
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
@@ -351,6 +359,7 @@ struct demo {
 #elif (defined(VK_USE_PLATFORM_IOS_MVK) || defined(VK_USE_PLATFORM_MACOS_MVK))
     void *window;
 #endif
+    VkDisplayKHR vkdisplay;
     VkSurfaceKHR surface;
 //    VkKmsDisplayInfoKEITHP display_info;
     bool prepared;
@@ -990,8 +999,16 @@ void DemoUpdateTargetIPD(struct demo *demo) {
     }
 }
 
+// Forward define:
+void draw_opengl(struct demo *demo);
+
 static void demo_draw(struct demo *demo) {
     VkResult U_ASSERT_ONLY err;
+
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+    draw_opengl(demo);
+    glXSwapBuffers(demo->display, demo->drawable);
+#endif
 
     // Ensure no more than FRAME_LAG renderings are outstanding
     vkWaitForFences(demo->device, 1, &demo->fences[demo->frame_index], VK_TRUE, UINT64_MAX);
@@ -2451,6 +2468,11 @@ static void demo_cleanup(struct demo *demo) {
         vkDestroyCommandPool(demo->device, demo->present_cmd_pool, NULL);
     }
     vkDeviceWaitIdle(demo->device);
+
+    PFN_vkReleaseDisplayEXT m_pvkReleaseDisplayEXT = (PFN_vkReleaseDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkReleaseDisplayEXT" );
+    printf("%p %p %p\n", m_pvkReleaseDisplayEXT, demo->gpu, demo->vkdisplay);
+    m_pvkReleaseDisplayEXT(demo->gpu, demo->vkdisplay);
+
     vkDestroyDevice(demo->device, NULL);
     if (demo->validate) {
         demo->DestroyDebugReportCallback(demo->inst, demo->msg_callback, NULL);
@@ -2462,6 +2484,8 @@ static void demo_cleanup(struct demo *demo) {
     XDestroyWindow(demo->display, demo->xlib_window);
     XCloseDisplay(demo->display);
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+    printf("Bye bye baby!\n");
+    sleep(5);
     xcb_disconnect(demo->connection);
     free(demo->atom_wm_delete_window);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
@@ -2716,7 +2740,7 @@ static void demo_run_xlib(struct demo *demo) {
             demo->quit = true;
     }
 }
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
+#elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
 static void demo_handle_xcb_event(struct demo *demo,
                               const xcb_generic_event_t *event) {
     uint8_t event_code = event->response_type & 0x7f;
@@ -2800,7 +2824,7 @@ static void demo_create_xcb_window(struct demo *demo) {
 
     xcb_create_window(demo->connection, XCB_COPY_FROM_PARENT, demo->xcb_window,
                       demo->screen->root, 0, 0, demo->width, demo->height, 0,
-                      XCB_WINDOW_CLASS_INPUT_OUTPUT, demo->screen->root_visual,
+                      XCB_WINDOW_CLASS_INPUT_OUTPUT, /*demo->screen->root_visual*/ demo->visualID,
                       value_mask, value_list);
 
     /* Magic code that will send notification when window is destroyed */
@@ -2827,6 +2851,102 @@ static void demo_create_xcb_window(struct demo *demo) {
     xcb_configure_window(demo->connection, demo->xcb_window,
                          XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
 }
+
+/*
+ *        Attribs filter the list of FBConfigs returned by glXChooseFBConfig().
+ *        Visual attribs further described in glXGetFBConfigAttrib(3)
+ */
+static int visual_attribs[] =
+{
+    GLX_X_RENDERABLE, True,
+    GLX_DRAWABLE_TYPE, GLX_WINDOW_BIT,
+    GLX_RENDER_TYPE, GLX_RGBA_BIT,
+    GLX_X_VISUAL_TYPE, GLX_TRUE_COLOR,
+    GLX_RED_SIZE, 8,
+    GLX_GREEN_SIZE, 8,
+    GLX_BLUE_SIZE, 8,
+    GLX_ALPHA_SIZE, 8,
+    GLX_DEPTH_SIZE, 24,
+    GLX_STENCIL_SIZE, 8,
+    GLX_DOUBLEBUFFER, True,
+    //GLX_SAMPLE_BUFFERS  , 1,
+    //GLX_SAMPLES         , 4,
+    None
+};
+
+void draw_opengl(struct demo *demo)
+{
+    glClearColor((float) demo->curFrame / 1000.0, 0.4, 0.9, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
+static void demo_create_glx_opengl1(struct demo *demo)
+{
+    int visualID = 0;
+
+    /* Query framebuffer configurations that match visual_attribs */
+    GLXFBConfig *fb_configs = 0;
+    int num_fb_configs = 0;
+    fb_configs = glXChooseFBConfig(demo->display, DefaultScreen(demo->display), visual_attribs, &num_fb_configs);
+    if(!fb_configs || num_fb_configs == 0)
+    {
+        fprintf(stderr, "glXGetFBConfigs failed\n");
+        exit(1);
+    }
+
+    printf("Found %d matching FB configs", num_fb_configs);
+
+    /* Select first framebuffer config and query visualID */
+    GLXFBConfig fb_config = fb_configs[0];
+    glXGetFBConfigAttrib(demo->display, fb_config, GLX_VISUAL_ID , &visualID);
+
+    demo->visualID = visualID;
+
+    /* Create OpenGL context */
+    demo->context = glXCreateNewContext(demo->display, fb_config, GLX_RGBA_TYPE, 0, True);
+    if(!demo->context)
+    {
+        fprintf(stderr, "glXCreateNewContext failed\n");
+        exit(1);
+    }
+
+    demo->fb_config = fb_config;
+}
+
+static void demo_create_glx_opengl2(struct demo *demo)
+{
+    /* Create GLX Window */
+    GLXDrawable drawable = 0;
+
+    GLXWindow glxwindow = glXCreateWindow(
+        demo->display,
+        demo->fb_config,
+        demo->xcb_window,
+        0);
+
+    if(!glxwindow)
+    {
+        xcb_destroy_window(demo->connection, demo->xcb_window);
+        glXDestroyContext(demo->display, demo->context);
+
+        fprintf(stderr, "glXDestroyContext failed\n");
+        exit(1);
+    }
+
+    drawable = glxwindow;
+
+    /* make OpenGL context current */
+    if(!glXMakeContextCurrent(demo->display, drawable, drawable, demo->context))
+    {
+        xcb_destroy_window(demo->connection, demo->xcb_window);
+        glXDestroyContext(demo->display, demo->context);
+
+        fprintf(stderr, "glXMakeContextCurrent failed\n");
+        exit(1);
+    }
+    demo->drawable = drawable;
+}
+
 // VK_USE_PLATFORM_XCB_KHR
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 static void demo_run(struct demo *demo) {
@@ -2883,7 +3003,11 @@ static void demo_run(struct demo *demo) {
     demo->curFrame++;
 }
 #elif defined(VK_USE_PLATFORM_MIR_KHR)
-#elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#endif
+
+// MK
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+// #elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
 // Forward define prototype of helper function that is defined after us:
 static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display);
 
@@ -2916,6 +3040,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     assert(!err || (err == VK_INCOMPLETE));
 
     display = display_props[display_count-1].display;
+    demo->vkdisplay = display;
 
     // 2nd try to lease the DRM display if needed. Will no-op if not running
     // on X or already leased:
@@ -3038,6 +3163,9 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     return vkCreateDisplayPlaneSurfaceKHR(demo->inst, &create_info, NULL, &demo->surface);
 }
 
+#endif
+
+#if 0
 static void demo_run_display(struct demo *demo)
 {
     while (!demo->quit) {
@@ -3343,7 +3471,7 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] =
                     VK_KHR_XLIB_SURFACE_EXTENSION_NAME;
             }
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
+#elif defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
             if (!strcmp(VK_KHR_XCB_SURFACE_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
                 platformSurfaceExtFound = 1;
@@ -3385,11 +3513,18 @@ static void demo_init_vk(struct demo *demo) {
             }
 #endif
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-	    if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
-			instance_extensions[i].extensionName)) {
-		    printf("found xlib display extension\n");
-		demo->extension_names[demo->enabled_extension_count++] = VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME;
-	    }
+            if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
+                instance_extensions[i].extensionName)) {
+                printf("found xlib display extension\n");
+                demo->extension_names[demo->enabled_extension_count++] = VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME;
+            }
+
+            if (!strcmp(VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
+                instance_extensions[i].extensionName)) {
+                printf("found direct mode display extension\n");
+                demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME;
+            }
+
 #if 0
 	    if (!strcmp(VK_KEITHP_KMS_DISPLAY_EXTENSION_NAME,
 			instance_extensions[i].extensionName)) {
@@ -3444,7 +3579,7 @@ static void demo_init_vk(struct demo *demo) {
                  "look at the Getting Started guide for additional "
                  "information.\n",
                  "vkCreateInstance Failure");
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
+#elif defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
         ERR_EXIT("vkEnumerateInstanceExtensionProperties failed to find "
                  "the " VK_KHR_XCB_SURFACE_EXTENSION_NAME
                  " extension.\n\nDo you have a compatible "
@@ -3831,7 +3966,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     err = vkCreateXlibSurfaceKHR(demo->inst, &createInfo, NULL,
                                      &demo->surface);
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
+#elif defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
     VkXcbSurfaceCreateInfoKHR createInfo;
     createInfo.sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR;
     createInfo.pNext = NULL;
@@ -4414,7 +4549,7 @@ int main(int argc, char **argv) {
     struct demo demo;
 
     demo_init(&demo, argc, argv);
-#if defined(VK_USE_PLATFORM_XCB_KHR)
+#if defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
     demo_create_xcb_window(&demo);
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
     demo_create_xlib_window(&demo);
@@ -4423,11 +4558,18 @@ int main(int argc, char **argv) {
 #elif defined(VK_USE_PLATFORM_MIR_KHR)
 #endif
 
+// MK:
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+    demo_create_glx_opengl1(&demo);
+    demo_create_xcb_window(&demo);
+    demo_create_glx_opengl2(&demo);
+#endif
+
     demo_init_vk_swapchain(&demo);
 
     demo_prepare(&demo);
 
-#if defined(VK_USE_PLATFORM_XCB_KHR)
+#if defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
     demo_run_xcb(&demo);
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
     demo_run_xlib(&demo);
@@ -4435,7 +4577,8 @@ int main(int argc, char **argv) {
     demo_run(&demo);
 #elif defined(VK_USE_PLATFORM_MIR_KHR)
 #elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    demo_run_display(&demo);
+    demo_run_xcb(&demo);
+// MK    demo_run_display(&demo);
 #endif
 
     demo_cleanup(&demo);

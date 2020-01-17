@@ -5,7 +5,7 @@ INCS=\
 	gettime.h\
 	linmath.h
 
-LIBS=-L/local/lib -L/local/xorg/lib -lvulkan -lm
+LIBS=-L/local/lib -L/local/xorg/lib -lvulkan -lm -lGL -lGLX
 LIBS_XCB=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb
 LIBS_DISPLAY=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb -ldrm
 LIBS_WAYLAND=-lwayland-client
@@ -16,7 +16,7 @@ GLSV=glslangValidator
 
 SPV=cube-vert.spv cube-frag.spv
 
-CFLAGS=-O0 -g -I/local/xorg/include -I/local/xorg/include/libdrm
+CFLAGS=-O0 -g -I/local/xorg/include -I/local/xorg/include/libdrm -I/usr/include/GL
 
 CFLAGS_DISPLAY=-DVK_USE_PLATFORM_DISPLAY_KHR -DVK_USE_PLATFORM_XLIB_XRANDR_EXT
 CFLAGS_XCB=-DVK_USE_PLATFORM_XCB_KHR
