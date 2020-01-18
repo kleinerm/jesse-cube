@@ -1,5 +1,5 @@
 SRCS=\
-	cube.c
+	cube.c glew.c
 
 INCS=\
 	gettime.h\
@@ -16,7 +16,7 @@ GLSV=glslangValidator
 
 SPV=cube-vert.spv cube-frag.spv
 
-CFLAGS=-O0 -g -I/local/xorg/include -I/local/xorg/include/libdrm -I/usr/include/GL
+CFLAGS=-O0 -g -I/local/xorg/include -I/local/xorg/include/libdrm -I/usr/include/GL -DGLEW_STATIC
 
 CFLAGS_DISPLAY=-DVK_USE_PLATFORM_DISPLAY_KHR -DVK_USE_PLATFORM_XLIB_XRANDR_EXT
 CFLAGS_XCB=-DVK_USE_PLATFORM_XCB_KHR
