@@ -430,8 +430,10 @@ struct demo {
     PFN_vkGetPastPresentationTimingGOOGLE fpGetPastPresentationTimingGOOGLE;
 //    PFN_vkRegisterDisplayEventEXT fpRegisterDisplayEventEXT;
 //    PFN_vkGetSwapchainCounterEXT fpGetSwapchainCounterEXT;
+
     // MK OpenGL -> Vulkan interop stuff:
     PFN_vkGetMemoryFdKHR fpGetMemoryFdKHR;
+    VkFormat interop_tex_format;
 
     // Stuff on the OpenGL side:
     GLuint glReady;
@@ -1624,7 +1626,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
                                        VkImageTiling tiling,
                                        VkImageUsageFlags usage,
                                        VkFlags required_props) {
-    const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    const VkFormat tex_format = demo->interop_tex_format;
     int32_t tex_width;
     int32_t tex_height;
     VkResult U_ASSERT_ONLY err;
@@ -1742,7 +1744,7 @@ static void demo_destroy_texture_image(struct demo *demo,
 }
 
 static void demo_prepare_textures(struct demo *demo) {
-    const VkFormat tex_format = VK_FORMAT_R8G8B8A8_UNORM; // TODO MK also in demo_prepare_texture_image()!!
+    const VkFormat tex_format = demo->interop_tex_format;
     VkFormatProperties props;
     uint32_t i;
 
@@ -3140,9 +3142,28 @@ static void demo_create_opengl_interop(struct demo *demo)
     // Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
     // and mip count should match the ones used by Vulkan to create the image and determine it's memory
     // allocation.
-    //glTextureStorageMem2DEXT(demo->color, 1, GL_RGBA16F, demo->width, demo->height, demo->mem, 0);
-    //glTextureStorageMem2DEXT(demo->color, 1, GL_RGB10_A2, demo->width, demo->height, demo->mem, 0);
-    glTextureStorageMem2DEXT(demo->color, 1, GL_RGBA8, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
+    GLenum internalFormat = (GLenum) 0;
+    switch (demo->interop_tex_format) {
+        case VK_FORMAT_R8G8B8A8_UNORM:
+            internalFormat = GL_RGBA8;
+            printf("OpenGL->Vulkan interop texture is format RGBA8\n");
+            break;
+
+        case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+            internalFormat = GL_RGB10_A2;
+            printf("OpenGL->Vulkan interop texture is format RGB10A2\n");
+            break;
+
+        case VK_FORMAT_R16G16B16A16_SFLOAT:
+            internalFormat = GL_RGBA16F;
+            printf("OpenGL->Vulkan interop texture is format RGBA16F\n");
+            break;
+
+        default:
+            printf("demo_create_opengl_interop: Invalid texture format!\n");
+    }
+
+    glTextureStorageMem2DEXT(demo->color, 1, internalFormat, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
     printf("Teximport size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
     err = glGetError();
     if (err)
@@ -4627,8 +4648,33 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     memset(demo, 0, sizeof(*demo));
     demo->presentMode = VK_PRESENT_MODE_FIFO_KHR;
     demo->frameCount = INT32_MAX;
+    demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--format") == 0 && i < argc - 1 &&
+            sscanf(argv[i + 1], "%d", (int*) &demo->interop_tex_format) == 1) {
+            i++;
+
+            switch (demo->interop_tex_format) {
+                case 0:
+                    demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+                    break;
+
+                case 1:
+                    demo->interop_tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+                    break;
+
+                case 2:
+                    demo->interop_tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                    break;
+
+                default:
+                    printf("Unsupported interop texture format!\n");
+                    exit(1);
+            }
+
+            continue;
+        }
         if (strcmp(argv[i], "--use_staging") == 0) {
             demo->use_staging_buffer = true;
             continue;
@@ -4683,7 +4729,8 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
                         "VK_PRESENT_MODE_FIFO_KHR = %d\n"
-                        "VK_PRESENT_MODE_FIFO_RELAXED_KHR = %d\n",
+                        "VK_PRESENT_MODE_FIFO_RELAXED_KHR = %d\n"
+                        "\n\n[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F\n",
                 APP_SHORT_NAME, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
                 VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
         fflush(stderr);
