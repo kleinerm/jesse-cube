@@ -5,7 +5,7 @@ INCS=\
 	gettime.h\
 	linmath.h
 
-LIBS=-L/local/lib -L/local/xorg/lib -lvulkan -lm -lGL -lGLX
+LIBS=-L/local/lib -L/local/xorg/lib -lvulkan -lm -lGL -lGLU -lGLX
 LIBS_XCB=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb
 LIBS_DISPLAY=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb -ldrm
 LIBS_WAYLAND=-lwayland-client

@@ -42,6 +42,7 @@
 #include "glew.h"
 #include <GL/glx.h>
 #include <GL/gl.h>
+#include <GL/glu.h>
 
 #if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
 #include <X11/Xutil.h>
@@ -1037,7 +1038,6 @@ static void demo_draw(struct demo *demo) {
 
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
     draw_opengl(demo);
-    glXSwapBuffers(demo->display, demo->drawable);
 #endif
 
     // Ensure no more than FRAME_LAG renderings are outstanding
@@ -1273,6 +1273,7 @@ static void demo_prepare_buffers(struct demo *demo) {
         swapchainExtent = surfCapabilities.currentExtent;
         demo->width = surfCapabilities.currentExtent.width;
         demo->height = surfCapabilities.currentExtent.height;
+        printf("Swapchain size: %i x %i\n", demo->width, demo->height);
     }
 
     // The FIFO present mode is guaranteed by the spec to be supported
@@ -1688,19 +1689,21 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
     err = vkBindImageMemory(demo->device, tex_obj->image, tex_obj->mem, 0);
     assert(!err);
 
-    // Get fd for shared memory with OpenGL:
-    VkMemoryGetFdInfoKHR memorygetfdinfo = {
-        .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-        .pNext = NULL,
-        .memory = tex_obj->mem,
-        .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-    };
+    if (usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) {
+        // Get fd for shared memory with OpenGL:
+        VkMemoryGetFdInfoKHR memorygetfdinfo = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+            .pNext = NULL,
+            .memory = tex_obj->mem,
+            .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+        };
 
-    memset(&demo->interophandles, 0, sizeof(demo->interophandles));
-    printf("PRE memory fd %i\n", demo->interophandles.memory);
-    err = demo->fpGetMemoryFdKHR(demo->device, &memorygetfdinfo, &demo->interophandles.memory);
-    assert(!err);
-    printf("GOT memory fd %i\n", demo->interophandles.memory);
+        memset(&demo->interophandles, 0, sizeof(demo->interophandles));
+        printf("PRE memory fd %i\n", demo->interophandles.memory);
+        err = demo->fpGetMemoryFdKHR(demo->device, &memorygetfdinfo, &demo->interophandles.memory);
+        assert(!err);
+        printf("GOT memory fd %i\n", demo->interophandles.memory);
+    }
 
     if (required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
         const VkImageSubresource subres = {
@@ -1718,6 +1721,8 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
                           tex_obj->mem_alloc.allocationSize, 0, &data);
         assert(!err);
 
+        printf("Vulkan texture image row pitch is %i bytes.\n", (int) layout.rowPitch);
+
         if (!loadTexture(filename, data, &layout, &tex_width, &tex_height)) {
             fprintf(stderr, "Error loading texture: %s\n", filename);
         }
@@ -1727,7 +1732,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
 
     // MK tex_obj->imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     tex_obj->imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                                       }
+}
 
 static void demo_destroy_texture_image(struct demo *demo,
                                        struct texture_object *tex_objs) {
@@ -1750,11 +1755,11 @@ static void demo_prepare_textures(struct demo *demo) {
         if ((props.linearTilingFeatures &
             (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) &&
             !demo->use_staging_buffer) {
-            printf("Will use linear textures for OpenGL->Vulkan interop via render-to-texture\n");
+            printf("Will use linear textures for OpenGL->Vulkan interop via render-to-texture to texture %i\n", i);
             /* Device can texture using linear textures */
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->textures[i], VK_IMAGE_TILING_LINEAR,
-                VK_IMAGE_USAGE_SAMPLED_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT,
+                VK_IMAGE_USAGE_SAMPLED_BIT | ((i == 0) ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT : 0),
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // MK Require device local bit.
             // Nothing in the pipeline needs to be complete to start, and don't allow fragment
@@ -2527,7 +2532,6 @@ static void demo_cleanup(struct demo *demo) {
     vkDeviceWaitIdle(demo->device);
 
     PFN_vkReleaseDisplayEXT m_pvkReleaseDisplayEXT = (PFN_vkReleaseDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkReleaseDisplayEXT" );
-    printf("%p %p %p\n", m_pvkReleaseDisplayEXT, demo->gpu, demo->vkdisplay);
     m_pvkReleaseDisplayEXT(demo->gpu, demo->vkdisplay);
 
     vkDestroyDevice(demo->device, NULL);
@@ -2541,8 +2545,7 @@ static void demo_cleanup(struct demo *demo) {
     XDestroyWindow(demo->display, demo->xlib_window);
     XCloseDisplay(demo->display);
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    printf("Bye bye baby!\n");
-    sleep(5);
+    printf("Bye bye!\n");
     xcb_disconnect(demo->connection);
     free(demo->atom_wm_delete_window);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
@@ -2558,6 +2561,11 @@ static void demo_cleanup(struct demo *demo) {
 
 static void demo_resize(struct demo *demo) {
     uint32_t i;
+
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+    // MK: Not needed for direct display mode:
+    return;
+#endif
 
     // Don't react to resize until after first initialization.
     if (!demo->prepared) {
@@ -2833,11 +2841,13 @@ static void demo_handle_xcb_event(struct demo *demo,
     case XCB_CONFIGURE_NOTIFY: {
         const xcb_configure_notify_event_t *cfg =
             (const xcb_configure_notify_event_t *)event;
+/*
         if ((demo->width != cfg->width) || (demo->height != cfg->height)) {
             demo->width = cfg->width;
             demo->height = cfg->height;
             demo_resize(demo);
         }
+*/
     } break;
     default:
         break;
@@ -2933,8 +2943,54 @@ static int visual_attribs[] =
 
 void draw_opengl(struct demo *demo)
 {
-    glClearColor((float) demo->curFrame / 1000.0, 0.4, 0.9, 1.0);
+    static bool firsttime = true;
+    int w = demo->textures[0].tex_width;
+    int h = demo->textures[0].tex_height;
+
+    if (firsttime) {
+        glViewport(0, 0, demo->textures[0].tex_width, demo->textures[0].tex_height);
+        printf("RTT size: %i x %i\n", w, h);
+        firsttime = false;
+    }
+
+    // Bind fbo with Vulkan texture for RTT:
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
+
+    // Clear to background color of changing color:
+    glClearColor((float) (demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(0.0, 1.0, 0.0);
+
+    // Draw some rotating square into the center, textured with a cat pic:
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glRotatef((float) (demo->curFrame % 360), 0, 0, 1);
+    glScalef(0.5, 0.5, 1);
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0, 0.0);
+    glVertex2f(-1.0, -1.0);
+    glTexCoord2f(1.0, 0.0);
+    glVertex2f(1.0, -1.0);
+    glTexCoord2f(1.0, 1.0);
+    glVertex2f(1.0, 1.0);
+    glTexCoord2f(0.0, 1.0);
+    glVertex2f(-1.0, 1.0);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
+
+    // Poor man's sync until we use semaphores properly:
+    glFinish();
+
+    // Unbind, so Vulkan can texture / blit from it:
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 static void demo_create_glx_opengl1(struct demo *demo)
@@ -2952,7 +3008,7 @@ static void demo_create_glx_opengl1(struct demo *demo)
         exit(1);
     }
 
-    printf("Found %d matching FB configs", num_fb_configs);
+    printf("Found %d matching FB configs\n", num_fb_configs);
 
     /* Select first framebuffer config and query visualID */
     GLXFBConfig fb_config = fb_configs[0];
@@ -3009,12 +3065,16 @@ static void demo_create_glx_opengl2(struct demo *demo)
         printf("glewInit failed!\n");
         exit(1);
     }
-    printf("Using GLEW version %s for OpenGL.\n", glewGetString(GLEW_VERSION));
+    printf("\nUsing GLEW version %s for OpenGL.\n", glewGetString(GLEW_VERSION));
+    printf("OpenGL renderer: %s %s - OpenGL %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER), glGetString(GL_VERSION));
 }
 
 static void demo_create_opengl_interop(struct demo *demo)
 {
     GLint tilingMode;
+    GLenum err;
+
+    while (glGetError());
 
     // Create the texture for the FBO color attachment.
     // This only reserves the ID, it doesn't allocate memory
@@ -3024,14 +3084,22 @@ static void demo_create_opengl_interop(struct demo *demo)
     glGenSemaphoresEXT(1, &demo->glReady);
     glGenSemaphoresEXT(1, &demo->glComplete);
 
+    err = glGetError();
+    if (err)
+        printf("Stage 1: GL ERROR: %i\n", err);
+
     #ifdef WIN32
     // Platform specific import.  On non-Win32 systems use glImportSemaphoreFdEXT instead
     glImportSemaphoreWin32HandleEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glReady);
     glImportSemaphoreWin32HandleEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glComplete);
     #else
-//    glImportSemaphoreFdEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glReady);
-//    glImportSemaphoreFdEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glComplete);
+    glImportSemaphoreFdEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glReady);
+    glImportSemaphoreFdEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glComplete);
     #endif
+
+    err = glGetError();
+    if (err)
+        printf("Stage 2: GL ERROR: %i\n", err);
 
     // Import memory
     glCreateMemoryObjectsEXT(1, &demo->mem);
@@ -3041,6 +3109,10 @@ static void demo_create_opengl_interop(struct demo *demo)
     #else
     glImportMemoryFdEXT(demo->mem, demo->textures[0].mem_alloc.allocationSize, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.memory);
     #endif
+
+    err = glGetError();
+    if (err)
+        printf("Stage 3: GL ERROR: %i\n", err);
 
     // Query actual tiling mode of texture. We need "optimal tiling" !
     glBindTexture(GL_TEXTURE_2D, demo->color);
@@ -3053,7 +3125,7 @@ static void demo_create_opengl_interop(struct demo *demo)
     else
         printf("Initially UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
 
-    glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA16F, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
+    glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA8, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
     printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
 
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &tilingMode);
@@ -3062,13 +3134,19 @@ static void demo_create_opengl_interop(struct demo *demo)
     // Set tiling mode for rendering into texture to optimal tiling, instead
     // of linear tiling, which worked for AMD gpu's, but not NVidia gpu's.
     // Optimal tiling works for both AMD and NVidia:
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_LINEAR_TILING_EXT);
 
     // Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
     // and mip count should match the ones used by Vulkan to create the image and determine it's memory
     // allocation.
-    glTextureStorageMem2DEXT(demo->color, 1, GL_RGBA16F, demo->width, demo->height, demo->mem, 0);
+    //glTextureStorageMem2DEXT(demo->color, 1, GL_RGBA16F, demo->width, demo->height, demo->mem, 0);
     //glTextureStorageMem2DEXT(demo->color, 1, GL_RGB10_A2, demo->width, demo->height, demo->mem, 0);
+    glTextureStorageMem2DEXT(demo->color, 1, GL_RGBA8, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
+    printf("Teximport size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
+    err = glGetError();
+    if (err)
+        printf("Stage 4: GL ERROR: %i\n", err);
 
     // Query actual tiling mode of texture. We need "optimal tiling" !
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
@@ -3081,15 +3159,34 @@ static void demo_create_opengl_interop(struct demo *demo)
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // The remaining initialization code is all standard OpenGL
+    err = glGetError();
+    if (err)
+        printf("Stage 5: GL ERROR: %i\n", err);
+
+    // Create FBO, attach our imported/Vulkan-shared texture as color buffer, so
+    // we can render-to-texture in OpenGL, present in Vulkan:
     glCreateFramebuffers(1, &demo->fbo);
     glNamedFramebufferTexture(demo->fbo, GL_COLOR_ATTACHMENT0, demo->color, 0);
-//    glGenVertexArrays(1, &demo->vao);
-//    glBindVertexArray(demo->vao);
-//    glUseProgram(demo->program);
-//    glProgramUniform3f(demo->program, 0, demo->width, demo->height, 0.0f);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
-    glViewport(0, 0, demo->width, demo->height);
+
+    // Load image again, this time into the backing store of the GL_TEXTURE_2D
+    // default binding 0 -- Yes, old school like it's 1992!
+    {
+        VkSubresourceLayout layout;
+        uint8_t *data = calloc(demo->textures[0].tex_width * demo->textures[0].tex_height * 4, sizeof(uint8_t));
+        int32_t width, height;
+        const char* filename = tex_files[0];
+        layout.rowPitch = 1024;
+
+        if (!loadTexture(filename, data, &layout, &width, &height)) {
+            fprintf(stderr, "Error loading texture: %s\n", filename);
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, demo->textures[0].tex_width, demo->textures[0].tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        free(data);
+    }
+
+    err = glGetError();
+    if (err)
+        printf("Stage 6: GL ERROR: %i\n", err);
 }
 
 // VK_USE_PLATFORM_XCB_KHR
@@ -4044,7 +4141,7 @@ static void demo_init_vk(struct demo *demo) {
         free(device_extensions);
     }
 
-    if (!swapchainExtFound || !maintenance1ExtFound || !hdrmetadataExtFound || !externalMemoryExtFound || !externalSemaphoreExtFound ||
+    if (!swapchainExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
         !externalMemoryFdExtFound || !externalSemaphoreFdExtFound) {
         ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
                  "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
@@ -4845,7 +4942,7 @@ int main(int argc, char **argv) {
     demo_prepare(&demo);
 
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-//    demo_create_opengl_interop(&demo);
+    demo_create_opengl_interop(&demo);
 #endif
 
 #if defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
