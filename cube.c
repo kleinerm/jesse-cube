@@ -44,8 +44,14 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
+#if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_XRANDR_EXT)
+typedef Bool ( * PFNGLXGETSYNCVALUESOMLPROC) (Display* dpy, GLXDrawable drawable, int64_t* ust, int64_t* msc, int64_t* sbc);
+PFNGLXGETSYNCVALUESOMLPROC glXGetSyncValuesOML = NULL;
+#endif
+
 #if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
 #include <X11/Xutil.h>
+
 #endif
 #if defined (VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
 #include <X11/Xlib-xcb.h>
@@ -81,7 +87,7 @@
 #define APP_LONG_NAME "The Vulkan Cube Demo Program"
 
 // Allow a maximum of two outstanding presentation operations.
-#define FRAME_LAG 2
+#define FRAME_LAG 1
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
@@ -450,6 +456,9 @@ struct demo {
     VkPresentModeKHR presentMode;
     VkFence fences[FRAME_LAG];
     int frame_index;
+
+    // Flip completion fence for timestamping:
+    VkFence flipcompletefence;
 
     VkCommandPool cmd_pool;
     VkCommandPool present_cmd_pool;
@@ -1036,22 +1045,29 @@ void DemoUpdateTargetIPD(struct demo *demo) {
 void draw_opengl(struct demo *demo);
 
 static void demo_draw(struct demo *demo) {
+    static uint64_t tlastSwapComplete = 0;
+    static uint64_t tPostSwapRequested = 0;
+    uint64_t tSwapComplete;
     VkResult U_ASSERT_ONLY err;
 
-#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    draw_opengl(demo);
-#endif
+    if (tlastSwapComplete == 0)
+        tlastSwapComplete = getTimeInNanoseconds();
 
-    // Ensure no more than FRAME_LAG renderings are outstanding
-    vkWaitForFences(demo->device, 1, &demo->fences[demo->frame_index], VK_TRUE, UINT64_MAX);
-    vkResetFences(demo->device, 1, &demo->fences[demo->frame_index]);
+    if (false) {
+        // Ensure no more than FRAME_LAG renderings are outstanding
+        vkWaitForFences(demo->device, 1, &demo->fences[demo->frame_index], VK_TRUE, UINT64_MAX);
+        vkResetFences(demo->device, 1, &demo->fences[demo->frame_index]);
+    }
 
     // Get the index of the next available swapchain image:
+    // Both image_acquired_semaphores[demo->frame_index] and the flipcompletefence
+    // will signal when the display engine is done with scanning out the acquired
+    // image, ergo, when it was replaced as old frontbuffer by a new frontbuffer,
+    // which was our old backbuffer, iow. when the previously scheduled swap/present
+    // actually completed due to kms-pageflip completion:
     err = demo->fpAcquireNextImageKHR(demo->device, demo->swapchain, UINT64_MAX,
                                       demo->image_acquired_semaphores[demo->frame_index],
-                                      VK_NULL_HANDLE, &demo->current_buffer);
-
-    demo_update_data_buffer(demo);
+                                      demo->flipcompletefence, &demo->current_buffer);
 
     if (err == VK_ERROR_OUT_OF_DATE_KHR) {
         // demo->swapchain is out of date (e.g. the window was resized) and
@@ -1068,6 +1084,43 @@ static void demo_draw(struct demo *demo) {
     } else {
         assert(!err);
     }
+
+    // Wait for flipcompletefence to signal, iow. for confirmed flip completion aka
+    // visual stimulus onset. Then reset the fence and timestamp the moment:
+    vkWaitForFences(demo->device, 1, &demo->flipcompletefence, VK_TRUE, UINT64_MAX);
+    vkResetFences(demo->device, 1, &demo->flipcompletefence);
+    tSwapComplete = getTimeInNanoseconds();
+
+#if defined(VK_USE_PLATFORM_XLIB_XRANDR_EXT)
+    // Under Linux + X11 we can (ab)use our X11 window on the same output that is
+    // leased out to Vulkan to use the glXGetSyncValuesOML() call on the Mesa FOSS
+    // based drivers to get a precise start of scanout timestamp at end of most
+    // recent vblank. Ideally this will be almost identical to tSwapComplete, ie.
+    // tSwapComplete is a noisy approximation of the proper queried ust here.
+    // Indeed, this works on AMD:
+    uint64_t ust, msc, sbc;
+    double serror;
+
+    if ((NULL != glXGetSyncValuesOML) && glXGetSyncValuesOML(demo->display, demo->drawable, &ust, &msc, &sbc)) {
+        // Timestamp disagreement of less than 1 msec is considered correct:
+        serror = ((double) tSwapComplete / 1000.0) - (double) ust;
+        if (serror < 1000)
+            printf("OK: ");
+
+        printf("msc %li, tSwapComplete %li - ust %li = %f usecs stimonset error: ", msc,
+               tSwapComplete, ust * 1000, serror);
+        // Override with accurate value:
+        tSwapComplete = ust * 1000;
+    }
+#endif
+
+    printf("ifi = %f msecs. tSwapComplete - tPostSwapRequested = %f msecs.\n",
+           (double)(tSwapComplete - tlastSwapComplete) / 1000000.0,
+           (double)(tSwapComplete - tPostSwapRequested) / 1000000.0);
+
+    // Update last swap complete for next cycle:
+    tlastSwapComplete = tSwapComplete;
+
     if (demo->VK_GOOGLE_display_timing_enabled) {
         // Look at what happened to previous presents, and make appropriate
         // adjustments in timing:
@@ -1079,6 +1132,12 @@ static void demo_draw(struct demo *demo) {
         // the next image is rendered/presented.  This demo program is so
         // simple that it doesn't do either of those.
     }
+
+    #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+        draw_opengl(demo);
+    #endif
+
+    demo_update_data_buffer(demo);
 
     // Wait for the image acquired semaphore to be signaled to ensure
     // that the image won't be rendered to until the presentation
@@ -1201,7 +1260,12 @@ static void demo_draw(struct demo *demo) {
         }
     }
 
+    //usleep(25000);
+
+    uint64_t tPreSwapRequested = getTimeInNanoseconds();
     err = demo->fpQueuePresentKHR(demo->present_queue, &present);
+    tPostSwapRequested = getTimeInNanoseconds();
+
     demo->frame_index += 1;
     demo->frame_index %= FRAME_LAG;
 
@@ -1226,6 +1290,11 @@ static void demo_draw(struct demo *demo) {
     } else {
         assert(!err);
     }
+
+    if (false)
+        printf("tPostSwapRequested - tPreSwapRequested = %f msecs. tPostSwapRequested - tSwapComplete = %f msecs.\n",
+            (double)(tPostSwapRequested - tPreSwapRequested) / 1000000.0,
+            (double)(tPostSwapRequested - tSwapComplete) / 1000000.0);
 }
 
 static void demo_prepare_buffers(struct demo *demo) {
@@ -1323,9 +1392,9 @@ static void demo_prepare_buffers(struct demo *demo) {
     }
 
     // Determine the number of VkImages to use in the swap chain.
-    // Application desires to acquire 3 images at a time for triple
-    // buffering
-    uint32_t desiredNumOfSwapchainImages = 3;
+    // Application desires to acquire 2 images at a time for double
+    // buffering: MK Changed to 2 for timestamping hack.
+    uint32_t desiredNumOfSwapchainImages = 2;
     if (desiredNumOfSwapchainImages < surfCapabilities.minImageCount) {
         desiredNumOfSwapchainImages = surfCapabilities.minImageCount;
     }
@@ -1403,13 +1472,20 @@ static void demo_prepare_buffers(struct demo *demo) {
                                         &demo->swapchainImageCount, NULL);
     assert(!err);
 
+    // MK Important for timestamping hack:
+    if (demo->swapchainImageCount > desiredNumOfSwapchainImages) {
+        printf("Got %i swapchain images, more than the desired %i ones. Clamping.\n",
+               demo->swapchainImageCount, desiredNumOfSwapchainImages);
+        demo->swapchainImageCount = desiredNumOfSwapchainImages;
+    }
+
     VkImage *swapchainImages =
         (VkImage *)malloc(demo->swapchainImageCount * sizeof(VkImage));
     assert(swapchainImages);
     err = demo->fpGetSwapchainImagesKHR(demo->device, demo->swapchain,
                                         &demo->swapchainImageCount,
                                         swapchainImages);
-    assert(!err);
+    assert(err == VK_INCOMPLETE || err == VK_SUCCESS);
 
     demo->swapchain_image_resources = (SwapchainImageResources *)malloc(sizeof(SwapchainImageResources) *
                                                demo->swapchainImageCount);
@@ -2808,6 +2884,7 @@ static void demo_run_xlib(struct demo *demo) {
     }
 }
 #elif defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_DISPLAY_KHR)
+
 static void demo_handle_xcb_event(struct demo *demo,
                               const xcb_generic_event_t *event) {
     uint8_t event_code = event->response_type & 0x7f;
@@ -3069,6 +3146,8 @@ static void demo_create_glx_opengl2(struct demo *demo)
     }
     printf("\nUsing GLEW version %s for OpenGL.\n", glewGetString(GLEW_VERSION));
     printf("OpenGL renderer: %s %s - OpenGL %s\n", glGetString(GL_VENDOR), glGetString(GL_RENDERER), glGetString(GL_VERSION));
+
+    glXGetSyncValuesOML = (PFNGLXGETSYNCVALUESOMLPROC) glXGetProcAddress("glXGetSyncValuesOML");
 }
 
 static void demo_create_opengl_interop(struct demo *demo)
@@ -4573,6 +4652,18 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             assert(!err);
         }
     }
+
+    // MK Create fence that we can use to wait for flip completion aka new
+    // backbuffer ready aka old frontbuffer idle because flip completed.
+    const VkFenceCreateInfo fence_flipcompletei = {
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = NULL,
+        .flags = 0
+    };
+
+    err = vkCreateFence(demo->device, &fence_flipcompletei, NULL, &demo->flipcompletefence);
+    assert(!err);
+
     demo->frame_index = 0;
 
     // Get Memory information and properties
