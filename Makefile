@@ -10,7 +10,8 @@ LIBS_XCB=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb
 LIBS_DISPLAY=-L/local/xorg/lib -lX11 -lX11-xcb -lxcb-randr -lxcb -ldrm
 LIBS_WAYLAND=-lwayland-client
 
-TARGETS=cube-xcb cube-display cube-wayland
+#TARGETS=cube-xcb cube-display cube-wayland
+TARGETS=cube-xcb cube-display
 
 GLSV=glslangValidator
 
