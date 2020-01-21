@@ -2892,12 +2892,16 @@ static void demo_handle_xcb_event(struct demo *demo,
     switch (event_code) {
     case XCB_EXPOSE:
         // TODO: Resize window
+        printf("XCB_EXPOSE\n");
+
         break;
     case XCB_CLIENT_MESSAGE:
         if ((*(xcb_client_message_event_t *)event).data.data32[0] ==
             (*demo->atom_wm_delete_window).atom) {
             demo->quit = true;
         }
+        printf("XCB_CLIENT_MESSAGE\n");
+
         break;
     case XCB_KEY_RELEASE: {
         const xcb_key_release_event_t *key =
@@ -2905,6 +2909,7 @@ static void demo_handle_xcb_event(struct demo *demo,
 
         switch (key->detail) {
         case 0x9: // Escape
+	case 0x18: // q key
             demo->quit = true;
             break;
         case 0x71: // left arrow key
@@ -2917,10 +2922,13 @@ static void demo_handle_xcb_event(struct demo *demo,
             demo->pause = !demo->pause;
             break;
         }
+        printf("KEY %x\n", key->detail);
     } break;
     case XCB_CONFIGURE_NOTIFY: {
         const xcb_configure_notify_event_t *cfg =
             (const xcb_configure_notify_event_t *)event;
+            printf("XCB_CONFIGURE_NOTIFY\n");
+
 /*
         if ((demo->width != cfg->width) || (demo->height != cfg->height)) {
             demo->width = cfg->width;
@@ -2935,6 +2943,9 @@ static void demo_handle_xcb_event(struct demo *demo,
 }
 
 static void demo_run_xcb(struct demo *demo) {
+    unsigned char keys_return[32];
+    unsigned int keysdown, i, j;
+
     xcb_flush(demo->connection);
 
     while (!demo->quit) {
@@ -2950,6 +2961,38 @@ static void demo_run_xcb(struct demo *demo) {
             demo_handle_xcb_event(demo, event);
             free(event);
             event = xcb_poll_for_event(demo->connection);
+        }
+
+        memset(keys_return, 0, sizeof(keys_return));
+        XQueryKeymap(demo->display, (char*) keys_return);
+        keysdown = 0;
+        for (i = 0; i < 32; i++) keysdown+=(unsigned int) keys_return[i];
+
+        // Map 32 times 8 bitvector to 256 element return vector:
+        for(i = 0; i < 32 && !keysdown; i++) {
+            for(j = 0; j < 8; j++) {
+                // This button or key down?
+                if (keys_return[i] & (1<<j)) {
+                    keysdown = i * 8 + j;
+                    break;
+                }
+            }
+        }
+
+        printf("keysdown %i\n", keysdown);
+        switch (keysdown) {
+            case 0x1: // q key
+                demo->quit = true;
+                break;
+            case 0x2: // left arrow key
+                demo->spin_angle -= demo->spin_increment;
+                break;
+            case 0x4: // right arrow key
+                demo->spin_angle += demo->spin_increment;
+                break;
+            case 0x41: // space bar
+                demo->pause = !demo->pause;
+                break;
         }
 
         demo_draw(demo);
