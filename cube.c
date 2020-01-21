@@ -461,6 +461,9 @@ struct demo {
     VkFence flipcompletefence;
     uint32_t waitMsecs;
 
+    // RandR output to select:
+    char output_name[128];
+
     VkCommandPool cmd_pool;
     VkCommandPool present_cmd_pool;
 
@@ -2979,7 +2982,9 @@ static void demo_run_xcb(struct demo *demo) {
             }
         }
 
-        printf("keysdown %i\n", keysdown);
+        if (keysdown)
+            printf("keysdown %i\n", keysdown);
+
         switch (keysdown) {
             case 0x1: // q key
                 demo->quit = true;
@@ -3657,7 +3662,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 
         xcb_window_t root = s_i.data->root;
 
-        printf("root %x\n", root);
+        printf("root window id x%x\n", root);
 
         xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
 
@@ -3680,17 +3685,17 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 
             /* Find the first connected but unused output */
             if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED) {
-                output = ro[o];
-                printf("Found output %s.\n", xcb_randr_get_output_info_name(goi_r));
+                printf("Found connected output %s.\n", xcb_randr_get_output_info_name(goi_r));
+                if (!demo->output_name[0] || !strcmp(demo->output_name, xcb_randr_get_output_info_name(goi_r))) {
+                    output = ro[o];
+                    printf("Selected output %s.\n", xcb_randr_get_output_info_name(goi_r));
+                }
             }
 
             free(goi_r);
         }
 
-        // VkDisplayKHR khr_display = NULL;
-
-        //XInitThreads();
-        demo->display = dpy; // XOpenDisplay(NULL);
+        demo->display = dpy;
     }
 
     // Running under an X-Server, and have X11 / XCB connections, screens etc.
@@ -4785,8 +4790,14 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->frameCount = INT32_MAX;
     demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
     demo->waitMsecs = 0;
+    demo->output_name[0] = 0;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--output") == 0 && i < argc - 1 &&
+            sscanf(argv[i + 1], "%s", (char*) &demo->output_name) == 1) {
+            i++;
+            continue;
+        }
         if (strcmp(argv[i], "--ifi") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->waitMsecs) == 1) {
             i++;
@@ -4865,7 +4876,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--output <RandROutputName>]\n"
                         "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
