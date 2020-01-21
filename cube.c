@@ -441,7 +441,7 @@ struct demo {
     PFN_vkGetMemoryFdKHR fpGetMemoryFdKHR;
     VkFormat interop_tex_format;
 
-    // Stuff on the OpenGL side:
+    // MK Stuff on the OpenGL side:
     GLuint glReady;
     GLuint glComplete;
     GLuint color;
@@ -457,8 +457,9 @@ struct demo {
     VkFence fences[FRAME_LAG];
     int frame_index;
 
-    // Flip completion fence for timestamping:
+    // MK Flip completion fence for timestamping:
     VkFence flipcompletefence;
+    uint32_t waitMsecs;
 
     VkCommandPool cmd_pool;
     VkCommandPool present_cmd_pool;
@@ -1260,7 +1261,7 @@ static void demo_draw(struct demo *demo) {
         }
     }
 
-    //usleep(25000);
+    usleep(demo->waitMsecs * 1000);
 
     uint64_t tPreSwapRequested = getTimeInNanoseconds();
     err = demo->fpQueuePresentKHR(demo->present_queue, &present);
@@ -4740,8 +4741,14 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->presentMode = VK_PRESENT_MODE_FIFO_KHR;
     demo->frameCount = INT32_MAX;
     demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    demo->waitMsecs = 0;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--ifi") == 0 && i < argc - 1 &&
+            sscanf(argv[i + 1], "%d", (int*) &demo->waitMsecs) == 1) {
+            i++;
+            continue;
+        }
         if (strcmp(argv[i], "--format") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->interop_tex_format) == 1) {
             i++;
@@ -4815,13 +4822,13 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] "
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break]\n"
+                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
                         "VK_PRESENT_MODE_FIFO_KHR = %d\n"
-                        "VK_PRESENT_MODE_FIFO_RELAXED_KHR = %d\n"
-                        "\n\n[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F\n",
+                        "VK_PRESENT_MODE_FIFO_RELAXED_KHR = %d\n",
                 APP_SHORT_NAME, VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR,
                 VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_RELAXED_KHR);
         fflush(stderr);
