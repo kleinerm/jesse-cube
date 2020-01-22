@@ -3009,6 +3009,7 @@ static void demo_run_xcb(struct demo *demo) {
 
 static void demo_create_xcb_window(struct demo *demo) {
     uint32_t value_mask, value_list[32];
+    uint32_t override_redirect = 1;
 
     demo->xcb_window = xcb_generate_id(demo->connection);
 
@@ -3017,8 +3018,10 @@ static void demo_create_xcb_window(struct demo *demo) {
     value_list[1] = XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_EXPOSURE |
                     XCB_EVENT_MASK_STRUCTURE_NOTIFY;
 
+    // MK TODO: Adjust x start position to viewport of output which displays Vulkan,
+    // instead of hard-coded 300 for the internal output:
     xcb_create_window(demo->connection, XCB_COPY_FROM_PARENT, demo->xcb_window,
-                      demo->screen->root, 0, 0, demo->width, demo->height, 0,
+                      demo->screen->root, 300, 0, demo->width, demo->height, 0,
                       XCB_WINDOW_CLASS_INPUT_OUTPUT, /*demo->screen->root_visual*/ demo->visualID,
                       value_mask, value_list);
 
@@ -3038,13 +3041,19 @@ static void demo_create_xcb_window(struct demo *demo) {
                         &(*demo->atom_wm_delete_window).atom);
     free(reply);
 
-    xcb_map_window(demo->connection, demo->xcb_window);
+    // MK Need override_redirect so WM does leave our window on the target display output for Vulkan:
+    xcb_change_window_attributes(demo->connection, demo->xcb_window, XCB_CW_OVERRIDE_REDIRECT, &override_redirect);
 
-    // Force the x/y coordinates to 100,100 results are identical in consecutive
-    // runs
-    const uint32_t coords[] = {100, 100};
-    xcb_configure_window(demo->connection, demo->xcb_window,
-                         XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, coords);
+    // MK this is not enough though. We need to set the X-Screens primary output to
+    // the Vulkan output, so the DDX selects the right crtc, given that it ignores
+    // all crtc's with disconnected outputs, and therefore the normal "max viewport <-> window intersection area"
+    // method does not work, and the primary output is always chosen for (msc,ust) queries.
+    //
+    // Well that, or hack the DDX to "consider_disabled" crtc's during crtc picking
+    // DRI3/Present...
+
+    xcb_map_window(demo->connection, demo->xcb_window);
+    xcb_flush(demo->connection);
 }
 
 /*
@@ -3713,6 +3722,11 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
     if (khr_display == NULL) {
         // Yep: Map RandR output to khr_display, hopefully:
         printf("Using output 0x%x\n", output);
+
+        #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
+        demo_create_glx_opengl1(demo);
+        demo_create_xcb_window(demo);
+        #endif
 
         err = m_pGetRandROutputDisplayEXT(demo->gpu,
                                         demo->display,
@@ -4892,10 +4906,10 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
     demo_init_connection(demo);
 
-    demo_init_vk(demo);
-
     demo->width = 512;
     demo->height = 512;
+
+    demo_init_vk(demo);
 
     demo->spin_angle = 4.0f;
     demo->spin_increment = 0.2f;
@@ -5119,6 +5133,7 @@ void android_main(struct android_app *app)
 int main(int argc, char **argv) {
     struct demo demo;
 
+    // This takes over the RandR output via DRM leasing:
     demo_init(&demo, argc, argv);
 
 #if defined(VK_USE_PLATFORM_XCB_KHR) && !defined(VK_USE_PLATFORM_DISPLAY_KHR)
@@ -5132,8 +5147,8 @@ int main(int argc, char **argv) {
 
 // MK:
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    demo_create_glx_opengl1(&demo);
-    demo_create_xcb_window(&demo);
+//    demo_create_glx_opengl1(&demo);
+//    demo_create_xcb_window(&demo);
     demo_create_glx_opengl2(&demo);
 #endif
     demo_init_vk_swapchain(&demo);
