@@ -3629,6 +3629,9 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
         // Setup all the XCB stuff, screens, etc. find suitable RandR output
         // to lease and display on:
         scr = DefaultScreen(dpy);
+        screen = scr;
+        printf("Using X-Screen %i\n", screen);
+
         demo->connection = XGetXCBConnection(dpy);
 
         if (xcb_connection_has_error(demo->connection) > 0) {
