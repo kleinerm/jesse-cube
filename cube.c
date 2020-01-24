@@ -446,10 +446,11 @@ struct demo {
     PFN_vkGetPastPresentationTimingGOOGLE fpGetPastPresentationTimingGOOGLE;
 //    PFN_vkRegisterDisplayEventEXT fpRegisterDisplayEventEXT;
 //    PFN_vkGetSwapchainCounterEXT fpGetSwapchainCounterEXT;
+    PFN_vkAcquireFullScreenExclusiveModeEXT fpAcquireFullScreenExclusiveModeEXT;
 
     // MK OpenGL -> Vulkan interop stuff:
     PFN_vkGetMemoryFdKHR fpGetMemoryFdKHR;
-	PFN_vkGetMemoryWin32HandleKHR fpGetMemoryWin32HandleKHR;
+    PFN_vkGetMemoryWin32HandleKHR fpGetMemoryWin32HandleKHR;
     VkFormat interop_tex_format;
 
     // MK Stuff on the OpenGL side:
@@ -1448,9 +1449,19 @@ static void demo_prepare_buffers(struct demo *demo) {
         }
     }
 
+    VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
+        .pNext = NULL,
+        .fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
+    };
+
     VkSwapchainCreateInfoKHR swapchain_ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+#if defined(WIN32)
+        .pNext = &fullscreen_exclusive_info,
+#else
         .pNext = NULL,
+#endif
         .surface = demo->surface,
         .minImageCount = desiredNumOfSwapchainImages,
         .imageFormat = demo->format,
@@ -1559,6 +1570,23 @@ static void demo_prepare_buffers(struct demo *demo) {
     if (NULL != presentModes) {
         free(presentModes);
     }
+
+#if defined(WIN32)
+    err = demo->fpAcquireFullScreenExclusiveModeEXT(demo->device, demo->swapchain);
+    switch (err) {
+        case VK_SUCCESS:
+            printf("Switched to fullscreen exclusive mode.\n");
+            break;
+
+        case VK_ERROR_INITIALIZATION_FAILED:
+            printf("Could not switch to fullscreen exclusive mode.\n");
+            break;
+
+        default:
+            printf("Error during switch to fullscreen exclusive mode.\n");
+            break;
+    }
+#endif
 }
 
 static void demo_prepare_depth(struct demo *demo) {
@@ -3004,7 +3032,7 @@ static void demo_create_window(struct demo *demo) {
 
     // Initialize the window class structure:
     win_class.cbSize = sizeof(WNDCLASSEX);
-    win_class.style = CS_HREDRAW | CS_VREDRAW;
+    win_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
     win_class.lpfnWndProc = WndProc;
     win_class.cbClsExtra = 0;
     win_class.cbWndExtra = 0;
@@ -3023,16 +3051,15 @@ static void demo_create_window(struct demo *demo) {
         exit(1);
     }
     // Create window with the registered class:
-    RECT wr = {0, 0, demo->width, demo->height};
-    AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
-    demo->window = CreateWindowEx(0,
+    //RECT wr = {0, 0, GetSystemMetrics(SM_CXFULLSCREEN), GetSystemMetrics(SM_CYFULLSCREEN)};
+    //AdjustWindowRectEx(&wr, WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, WS_EX_TOPMOST | WS_EX_APPWINDOW);
+    demo->window = CreateWindowEx(WS_EX_TOPMOST | WS_EX_APPWINDOW,
                                   demo->name,           // class name
                                   demo->name,           // app name
-                                  WS_OVERLAPPEDWINDOW | // window style
-                                      WS_VISIBLE | WS_SYSMENU,
-                                  100, 100,           // x/y coords
-                                  wr.right - wr.left, // width
-                                  wr.bottom - wr.top, // height
+                                  WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, // window style | WS_SYSMENU,
+                                  0, 0,  // x/y coords
+                                  GetSystemMetrics(SM_CXSCREEN), // width
+                                  GetSystemMetrics(SM_CYSCREEN), // height
                                   NULL,               // handle to parent
                                   NULL,               // handle to menu
                                   demo->connection,   // hInstance
@@ -3043,9 +3070,10 @@ static void demo_create_window(struct demo *demo) {
         fflush(stdout);
         exit(1);
     }
+
     // Window client area size must be at least 1 pixel high, to prevent crash.
-    demo->minsize.x = GetSystemMetrics(SM_CXMINTRACK);
-    demo->minsize.y = GetSystemMetrics(SM_CYMINTRACK)+1;
+    demo->minsize.x = GetSystemMetrics(SM_CXSCREEN); // GetSystemMetrics(SM_CXMINTRACK);
+    demo->minsize.y = GetSystemMetrics(SM_CYSCREEN); // GetSystemMetrics(SM_CYMINTRACK) + 1;
 
 	hDC = GetDC(demo->window);
 
@@ -4695,6 +4723,8 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 #if defined(WIN32)
 	// External memory fd extension:
 	GET_DEVICE_PROC_ADDR(demo->device, GetMemoryWin32HandleKHR);
+	// Switch for fullscreen exclusive mode:
+	GET_DEVICE_PROC_ADDR(demo->device, AcquireFullScreenExclusiveModeEXT);
 #else
     // External memory fd extension:
     GET_DEVICE_PROC_ADDR(demo->device, GetMemoryFdKHR);
