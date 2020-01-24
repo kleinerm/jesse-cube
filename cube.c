@@ -3045,55 +3045,31 @@ static void demo_create_window(struct demo *demo) {
 
 	hDC = GetDC(demo->window);
 
-	// pixelformat:
-	memset(&pfd, 0, sizeof(pfd));
-	attribcount = 0;
-
-	//attribs[attribcount++] = 0x2001; // WGL_DRAW_TO_WINDOW_ARB
-	//attribs[attribcount++] = GL_TRUE;
-	//attribs[attribcount++] = 0x2010; // WGL_SUPPORT_OPENGL_ARB
-	//attribs[attribcount++] = GL_TRUE;
-	//attribs[attribcount++] = 0x2007; // WGL_SWAP_METHOD_ARB
-	//attribs[attribcount++] = 0x2028; // WGL_SWAP_EXCHANGE_ARB
-	//attribs[attribcount++] = 0x2013; // WGL_PIXEL_TYPE_ARB
-	//attribs[attribcount++] = 0x202B; // WGL_TYPE_RGBA_ARB
-	//attribs[attribcount++] = WGL_RED_BITS_ARB;
-	//attribs[attribcount++] = 8;
-	//attribs[attribcount++] = WGL_GREEN_BITS_ARB;
-	//attribs[attribcount++] = 8;
-	//attribs[attribcount++] = WGL_BLUE_BITS_ARB;
-	//attribs[attribcount++] = 8;
-	//attribs[attribcount++] = WGL_ALPHA_BITS_ARB;
-	//// Alpha channel has only 2 bpc in the fixed point bpc=10 case, i.e. RGBA=1010102.
-	//// No alpha channel possible on bpc=11 case ie., RGB111110 for a total of 32 bpp.
-	//attribs[attribcount++] = 8;
-	//attribs[attribcount++] = 0x2011; // WGL_DOUBLE_BUFFER_ARB
-	//attribs[attribcount++] = GL_TRUE;
 	// Build pixelformat descriptor:
+	memset(&pfd, 0, sizeof(pfd));
 	pfd.nSize = sizeof(pfd);
 	pfd.nVersion = 1;
 	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_SWAP_EXCHANGE | PFD_DOUBLEBUFFER;  // Want OpenGL capable window with bufferswap via page-flipping...
 	pfd.iPixelType = PFD_TYPE_RGBA; // Want a RGBA pixel format.
 	pfd.cColorBits = 32;
 	pfd.cAlphaBits = 8; // Usually want an at least 8 bit alpha-buffer, unless high color bit depths formats requested.
-	//attribs[attribcount++] = 0;
 	pf = ChoosePixelFormat(hDC, &pfd);
 
 	// Do we have a valid pixelformat?
 	if (pf == 0) {
 		// Nope. We give up!
-		printf("\nPTB-ERROR[ChoosePixelFormat() failed]: Unknown error, Win32 specific.\n\n");
+		printf("\nChoosePixelFormat() failed: Unknown error, Win32 specific.\n\n");
 		exit(1);
 	}
 
 	// Yes. Set it:
 	if (SetPixelFormat(hDC, pf, &pfd) == FALSE) {
-		printf("\nPTB-ERROR[SetPixelFormat() failed]: Unknown error, Win32 specific.\n\n");
+		printf("\nSetPixelFormat() failed: Unknown error, Win32 specific.\n\n");
 		exit(1);
 	}
 	HGLRC glcontext = wglCreateContext(hDC);
 	if (glcontext == NULL) {
-		printf("\nPTB-ERROR:[Context creation failed] Unknown, Win32 specific.\n\n");
+		printf("\nOpenGL context creation failed: Unknown, Win32 specific.\n\n");
 		exit(1);
 	}
 	wglMakeCurrent(hDC, glcontext);
@@ -3103,7 +3079,7 @@ static void demo_create_window(struct demo *demo) {
 	glerr = glewInit();
 	if (GLEW_OK != glerr) {
 		/* Problem: glewInit failed, something is seriously wrong. */
-		printf("\nPTB-ERROR[GLEW init failed: %s]: Please report this to the forum. Will try to continue, but may crash soon!\n\n", glewGetErrorString(glerr));
+		printf("\nGLEW init failed: %s: Will try to continue, but may crash soon!\n\n", glewGetErrorString(glerr));
 		fflush(NULL);
 		exit(1);
 	}
