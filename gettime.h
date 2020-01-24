@@ -46,10 +46,10 @@ uint64_t getTimeInNanoseconds(void) {
 
     if (count.QuadPart < MAXLONGLONG / 1000000) {
         assert(freq.QuadPart != 0);
-        return count.QuadPart * 1000000 / freq.QuadPart;
+        return 1000 * count.QuadPart * 1000000 / freq.QuadPart;
     } else {
         assert(freq.QuadPart >= 1000000);
-        return count.QuadPart / (freq.QuadPart / 1000000);
+        return 1000 * count.QuadPart / (freq.QuadPart / 1000000);
     }
 
 #elif defined(__unix__) || defined(__linux) || defined(__linux__) || defined(__ANDROID__) || defined(__QNX__)
