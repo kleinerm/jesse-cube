@@ -3020,15 +3020,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 static void demo_create_window(struct demo *demo) {
     WNDCLASSEX win_class;
-	int pf;
-	unsigned int nNumFormats;
-	GLenum glerr;
-	HDC hDC;
-	HWND hWnd;
-	WNDCLASS wc;
-	PIXELFORMATDESCRIPTOR pfd;
-	int attribs[58];
-	int attribcount;
+    int pf;
+    GLenum glerr;
+    HDC hDC;
+    PIXELFORMATDESCRIPTOR pfd;
 
     // Initialize the window class structure:
     win_class.cbSize = sizeof(WNDCLASSEX);
@@ -3075,47 +3070,50 @@ static void demo_create_window(struct demo *demo) {
     demo->minsize.x = GetSystemMetrics(SM_CXSCREEN); // GetSystemMetrics(SM_CXMINTRACK);
     demo->minsize.y = GetSystemMetrics(SM_CYSCREEN); // GetSystemMetrics(SM_CYMINTRACK) + 1;
 
-	hDC = GetDC(demo->window);
+    hDC = GetDC(demo->window);
 
-	// Build pixelformat descriptor:
-	memset(&pfd, 0, sizeof(pfd));
-	pfd.nSize = sizeof(pfd);
-	pfd.nVersion = 1;
-	pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_SWAP_EXCHANGE | PFD_DOUBLEBUFFER;  // Want OpenGL capable window with bufferswap via page-flipping...
-	pfd.iPixelType = PFD_TYPE_RGBA; // Want a RGBA pixel format.
-	pfd.cColorBits = 32;
-	pfd.cAlphaBits = 8; // Usually want an at least 8 bit alpha-buffer, unless high color bit depths formats requested.
-	pf = ChoosePixelFormat(hDC, &pfd);
+    // Build pixelformat descriptor:
+    memset(&pfd, 0, sizeof(pfd));
+    pfd.nSize = sizeof(pfd);
+    pfd.nVersion = 1;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_SWAP_EXCHANGE | PFD_DOUBLEBUFFER;  // Want OpenGL capable window with bufferswap via page-flipping...
+    pfd.iPixelType = PFD_TYPE_RGBA; // Want a RGBA pixel format.
+    pfd.cColorBits = 32;
+    pfd.cAlphaBits = 8; // Usually want an at least 8 bit alpha-buffer, unless high color bit depths formats requested.
+    pf = ChoosePixelFormat(hDC, &pfd);
 
-	// Do we have a valid pixelformat?
-	if (pf == 0) {
-		// Nope. We give up!
-		printf("\nChoosePixelFormat() failed: Unknown error, Win32 specific.\n\n");
-		exit(1);
-	}
+    // Do we have a valid pixelformat?
+    if (pf == 0) {
+        // Nope. We give up!
+        printf("\nChoosePixelFormat() failed: Unknown error, Win32 specific.\n\n");
+        exit(1);
+    }
 
-	// Yes. Set it:
-	if (SetPixelFormat(hDC, pf, &pfd) == FALSE) {
-		printf("\nSetPixelFormat() failed: Unknown error, Win32 specific.\n\n");
-		exit(1);
-	}
-	HGLRC glcontext = wglCreateContext(hDC);
-	if (glcontext == NULL) {
-		printf("\nOpenGL context creation failed: Unknown, Win32 specific.\n\n");
-		exit(1);
-	}
-	wglMakeCurrent(hDC, glcontext);
+    // Yes. Set it:
+    if (SetPixelFormat(hDC, pf, &pfd) == FALSE) {
+        printf("\nSetPixelFormat() failed: Unknown error, Win32 specific.\n\n");
+        exit(1);
+    }
 
-	// Ok, the OpenGL rendering context is up and running. Auto-detect and bind all
-	// available OpenGL extensions via GLEW:
-	glerr = glewInit();
-	if (GLEW_OK != glerr) {
-		/* Problem: glewInit failed, something is seriously wrong. */
-		printf("\nGLEW init failed: %s: Will try to continue, but may crash soon!\n\n", glewGetErrorString(glerr));
-		fflush(NULL);
-		exit(1);
-	}
+    HGLRC glcontext = wglCreateContext(hDC);
+    if (glcontext == NULL) {
+        printf("\nOpenGL context creation failed: Unknown, Win32 specific.\n\n");
+        exit(1);
+    }
+
+    wglMakeCurrent(hDC, glcontext);
+
+    // Ok, the OpenGL rendering context is up and running. Auto-detect and bind all
+    // available OpenGL extensions via GLEW:
+    glerr = glewInit();
+    if (GLEW_OK != glerr) {
+        /* Problem: glewInit failed, something is seriously wrong. */
+        printf("\nGLEW init failed: %s: Will try to continue, but may crash soon!\n\n", glewGetErrorString(glerr));
+        fflush(NULL);
+        exit(1);
+    }
 }
+
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 static void demo_create_xlib_window(struct demo *demo) {
 
