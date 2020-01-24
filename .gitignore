@@ -7,3 +7,6 @@ cube-*
 .vs/hdrglvulkaninterop/v16/ipch/AutoPCH/20bc0f34c9884cb7/CUBE.ipch
 .vs/hdrglvulkaninterop/v16/ipch/AutoPCH/75338ba01398ed37/CUBE.ipch
 .vs/hdrglvulkaninterop/v16/ipch/AutoPCH/cbbc5a6ae91418a7/GLEW.ipch
+Debug/hdrglvulkaninterop.vcxprojAssemblyReference.cache
+*.log
+x64/Debug/hdrglvulkaninterop.vcxproj.FileListAbsolute.txt
