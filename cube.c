@@ -446,11 +446,12 @@ struct demo {
     PFN_vkGetPastPresentationTimingGOOGLE fpGetPastPresentationTimingGOOGLE;
 //    PFN_vkRegisterDisplayEventEXT fpRegisterDisplayEventEXT;
 //    PFN_vkGetSwapchainCounterEXT fpGetSwapchainCounterEXT;
+#if defined(WIN32)
     PFN_vkAcquireFullScreenExclusiveModeEXT fpAcquireFullScreenExclusiveModeEXT;
-
+    PFN_vkGetMemoryWin32HandleKHR fpGetMemoryWin32HandleKHR;
+#endif
     // MK OpenGL -> Vulkan interop stuff:
     PFN_vkGetMemoryFdKHR fpGetMemoryFdKHR;
-    PFN_vkGetMemoryWin32HandleKHR fpGetMemoryWin32HandleKHR;
     VkFormat interop_tex_format;
 
     // MK Stuff on the OpenGL side:
@@ -1449,11 +1450,13 @@ static void demo_prepare_buffers(struct demo *demo) {
         }
     }
 
+#if defined(WIN32)
     VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
         .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
         .pNext = NULL,
         .fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
     };
+#endif
 
     VkSwapchainCreateInfoKHR swapchain_ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
@@ -4345,12 +4348,14 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
             }
 
-			if (!strcmp(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,
-				device_extensions[i].extensionName)) {
-				fullscreenexclusiveExtFound = 1;
-				printf("found full screen exclusive extension\n");
-				demo->extension_names[demo->enabled_extension_count++] = VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME;
-			}
+#ifdef WIN32
+            if (!strcmp(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,
+                device_extensions[i].extensionName)) {
+                fullscreenexclusiveExtFound = 1;
+                printf("found full screen exclusive extension\n");
+                demo->extension_names[demo->enabled_extension_count++] = VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME;
+            }
+#endif
 
             if (!strcmp(VK_KHR_MAINTENANCE1_EXTENSION_NAME,
                 device_extensions[i].extensionName)) {
@@ -4394,17 +4399,20 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME;
             }
 
-			if (!strcmp(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
-				device_extensions[i].extensionName)) {
-				externalMemoryWin32ExtFound = 1;
-				demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME;
-			}
+#ifdef WIN32
 
-			if (!strcmp(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
-				device_extensions[i].extensionName)) {
-				externalSemaphoreWin32ExtFound = 1;
-				demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
-			}
+            if (!strcmp(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
+                device_extensions[i].extensionName)) {
+                externalMemoryWin32ExtFound = 1;
+                demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME;
+            }
+
+            if (!strcmp(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
+                device_extensions[i].extensionName)) {
+                externalSemaphoreWin32ExtFound = 1;
+                demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME;
+            }
+#endif
         }
 
         if (demo->VK_KHR_incremental_present_enabled) {
