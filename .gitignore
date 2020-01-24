@@ -1,3 +1,9 @@
 *.o
 cube-*
 *.spv
+.vs/hdrglvulkaninterop/v16/.suo
+.vs/hdrglvulkaninterop/v16/Browse.VC.db
+.vs/hdrglvulkaninterop/v16/Browse.VC.opendb
+.vs/hdrglvulkaninterop/v16/ipch/AutoPCH/20bc0f34c9884cb7/CUBE.ipch
+.vs/hdrglvulkaninterop/v16/ipch/AutoPCH/75338ba01398ed37/CUBE.ipch
+.vs/hdrglvulkaninterop/v16/ipch/AutoPCH/cbbc5a6ae91418a7/GLEW.ipch
