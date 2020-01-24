@@ -2956,6 +2956,10 @@ static void demo_run(struct demo *demo) {
 // MS-Windows event handling function:
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
+	case WM_CHAR:
+		if (wParam != 'q')
+			break;
+		// fallthrough to WM_CLOSE if q key pressed:
     case WM_CLOSE:
         PostQuitMessage(validation_error);
         break;
@@ -5174,6 +5178,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
     }
 
     demo_cleanup(&demo);
+
+	// Give user a chance to read console output:
+	ShowWindow(demo.window, SW_HIDE);
+	printf("Press a character key to exit!\n");
+	fflush(NULL);
+	_getch();
 
     return (int)msg.wParam;
 }
