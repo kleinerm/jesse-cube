@@ -472,7 +472,7 @@ struct demo {
 
     // MK Flip completion fence for timestamping:
     VkFence flipcompletefence;
-    uint32_t waitMsecs;
+    int32_t waitMsecs;
 
     // RandR output to select:
     char output_name[128];
@@ -1278,9 +1278,15 @@ static void demo_draw(struct demo *demo) {
     }
 
 #ifndef WIN32
-    usleep(demo->waitMsecs * 1000);
+    if (demo->waitMsecs >= 0) {
+        usleep(demo->waitMsecs * 1000);
+    }
+    else {
+        // Randomized wait time:
+        usleep(-1000 * demo->waitMsecs * ((double) random() / (double) RAND_MAX));
+    }
 #else
-	Sleep(demo->waitMsecs);
+    Sleep(demo->waitMsecs);
 #endif
 
     uint64_t tPreSwapRequested = getTimeInNanoseconds();
