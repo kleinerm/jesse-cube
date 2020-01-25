@@ -1,5 +1,4 @@
 *.o
-cube-display
 cube-wayland
 cube-xcb
 .vs/hdrglvulkaninterop/v16/.suo
