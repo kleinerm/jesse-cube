@@ -890,7 +890,7 @@ void demo_update_data_buffer(struct demo *demo) {
 
     /* Make the cube spin at a constant rate */
     if (demo->VK_GOOGLE_display_timing_enabled)
-	spin_angle *= (float) demo->target_IPD / (1.0f / 30.0f * 1e9);
+        spin_angle *= (float) demo->target_IPD / (1.0f / 30.0f * 1e9);
 
     mat4x4_rotate(demo->model_matrix, Model, 0.0f, 1.0f, 0.0f,
                   (float)degreesToRadians(spin_angle));
@@ -911,8 +911,8 @@ DemoRefreshDuration(struct demo *demo) {
    VkRefreshCycleDurationGOOGLE rc_dur;
    VkResult err;
    err = demo->fpGetRefreshCycleDurationGOOGLE(demo->device,
-					       demo->swapchain,
-					       &rc_dur);
+                           demo->swapchain,
+                           &rc_dur);
    assert(!err);
    return rc_dur.refreshDuration;
 }
@@ -938,7 +938,7 @@ void DemoUpdateTargetIPD(struct demo *demo) {
                                                       past);
         assert(!err);
 
-	uint64_t refresh_duration = DemoRefreshDuration(demo);
+    uint64_t refresh_duration = DemoRefreshDuration(demo);
 
         bool early = false;
         bool late = false;
@@ -1047,7 +1047,7 @@ void DemoUpdateTargetIPD(struct demo *demo) {
             demo->refresh_duration_multiplier++;
         }
         demo->target_IPD =
-		refresh_duration * demo->refresh_duration_multiplier;
+        refresh_duration * demo->refresh_duration_multiplier;
 
         if (calibrate_next) {
             int64_t multiple = demo->next_present_id - past[count-1].presentID - 1;
@@ -1298,12 +1298,12 @@ static void demo_draw(struct demo *demo) {
 
 #if 0
     if (demo->fpGetSwapchainCounterEXT) {
-	uint64_t counter;
+    uint64_t counter;
 
-	demo->fpGetSwapchainCounterEXT(demo->device,
-				       demo->swapchain,
-				       0,
-				       &counter);
+    demo->fpGetSwapchainCounterEXT(demo->device,
+                       demo->swapchain,
+                       0,
+                       &counter);
     }
 #endif
 
@@ -1802,14 +1802,14 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
         .sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
         .pNext = NULL,
 #if defined(WIN32)
-		.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
+        .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
 #else
         .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
 #endif
     };
 
     tex_obj->mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	tex_obj->mem_alloc.pNext = &exportAllocInfo;
+    tex_obj->mem_alloc.pNext = &exportAllocInfo;
     tex_obj->mem_alloc.allocationSize = mem_reqs.size;
     tex_obj->mem_alloc.memoryTypeIndex = 0;
 
@@ -1827,37 +1827,37 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
     err = vkBindImageMemory(demo->device, tex_obj->image, tex_obj->mem, 0);
     assert(!err);
 
-	memset(&demo->interophandles, 0, sizeof(demo->interophandles));
+    memset(&demo->interophandles, 0, sizeof(demo->interophandles));
 
     if (usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) {
 #ifdef WIN32
-		// Get handle for shared memory with OpenGL:
-		VkMemoryGetWin32HandleInfoKHR memorygetwinhandleinfo = {
-			.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR,
-			.pNext = NULL,
-			.memory = tex_obj->mem,
-			.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
-		};
+        // Get handle for shared memory with OpenGL:
+        VkMemoryGetWin32HandleInfoKHR memorygetwinhandleinfo = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR,
+            .pNext = NULL,
+            .memory = tex_obj->mem,
+            .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
+        };
 
-		printf("PRE memory handle %p\n", demo->interophandles.memory);
-		err = demo->fpGetMemoryWin32HandleKHR(demo->device, &memorygetwinhandleinfo, &demo->interophandles.memory);
-		assert(!err);
-		printf("GOT memory handle %p\n", demo->interophandles.memory);
+        printf("PRE memory handle %p\n", demo->interophandles.memory);
+        err = demo->fpGetMemoryWin32HandleKHR(demo->device, &memorygetwinhandleinfo, &demo->interophandles.memory);
+        assert(!err);
+        printf("GOT memory handle %p\n", demo->interophandles.memory);
 #else
-		// Get fd for shared memory with OpenGL:
-		VkMemoryGetFdInfoKHR memorygetfdinfo = {
-			.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-			.pNext = NULL,
-			.memory = tex_obj->mem,
-			.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-		};
+        // Get fd for shared memory with OpenGL:
+        VkMemoryGetFdInfoKHR memorygetfdinfo = {
+            .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+            .pNext = NULL,
+            .memory = tex_obj->mem,
+            .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+        };
 
         printf("PRE memory fd %i\n", demo->interophandles.memory);
-		err = demo->fpGetMemoryFdKHR(demo->device, &memorygetfdinfo, &demo->interophandles.memory);
-		assert(!err);
-		printf("GOT memory fd %i\n", demo->interophandles.memory);
+        err = demo->fpGetMemoryFdKHR(demo->device, &memorygetfdinfo, &demo->interophandles.memory);
+        assert(!err);
+        printf("GOT memory fd %i\n", demo->interophandles.memory);
 #endif
-	}
+    }
 
     if (required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
         const VkImageSubresource subres = {
@@ -1918,8 +1918,8 @@ static void demo_prepare_textures(struct demo *demo) {
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
 #endif
-				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-				0); // MK Require device local bit.
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+                0); // MK Require device local bit.
             // Nothing in the pipeline needs to be complete to start, and don't allow fragment
             // shader to run until layout transition completes
             demo_set_image_layout(demo, demo->textures[i].image, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -2689,10 +2689,10 @@ static void demo_cleanup(struct demo *demo) {
     }
     vkDeviceWaitIdle(demo->device);
 
-	// Release display from direct display mode under Linux:
+    // Release display from direct display mode under Linux:
     PFN_vkReleaseDisplayEXT m_pvkReleaseDisplayEXT = (PFN_vkReleaseDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkReleaseDisplayEXT" );
-	if (m_pvkReleaseDisplayEXT)
-		m_pvkReleaseDisplayEXT(demo->gpu, demo->vkdisplay);
+    if (m_pvkReleaseDisplayEXT)
+        m_pvkReleaseDisplayEXT(demo->gpu, demo->vkdisplay);
 
     vkDestroyDevice(demo->device, NULL);
     if (demo->validate) {
@@ -2780,199 +2780,199 @@ static void demo_resize(struct demo *demo) {
     // swapchain:
     demo_prepare(demo);
 
-	// Renitialize OpenGL side of OpenGL->Vulkan interop.
-	demo_create_opengl_interop(demo);
+    // Renitialize OpenGL side of OpenGL->Vulkan interop.
+    demo_create_opengl_interop(demo);
 }
 
 void draw_opengl(struct demo* demo)
 {
-	static bool firsttime = true;
-	int w = demo->textures[0].tex_width;
-	int h = demo->textures[0].tex_height;
+    static bool firsttime = true;
+    int w = demo->textures[0].tex_width;
+    int h = demo->textures[0].tex_height;
 
-	if (firsttime) {
-		glViewport(0, 0, demo->textures[0].tex_width, demo->textures[0].tex_height);
-		printf("RTT size: %i x %i\n", w, h);
-		firsttime = false;
-	}
+    if (firsttime) {
+        glViewport(0, 0, demo->textures[0].tex_width, demo->textures[0].tex_height);
+        printf("RTT size: %i x %i\n", w, h);
+        firsttime = false;
+    }
 
-	// Bind fbo with Vulkan texture for RTT:
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
+    // Bind fbo with Vulkan texture for RTT:
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
 
-	// Clear to background color of changing color:
-	glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-	glColor3f(0.0, 1.0, 0.0);
+    // Clear to background color of changing color:
+    glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(0.0, 1.0, 0.0);
 
-	// Draw some rotating square into the center, textured with a cat pic:
-	glMatrixMode(GL_PROJECTION);
-	glLoadIdentity();
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
-	glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
-	glScalef(0.5, 0.5, 1);
-	glEnable(GL_TEXTURE_2D);
-	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glBegin(GL_QUADS);
-	glTexCoord2f(0.0, 0.0);
-	glVertex2f(-1.0, -1.0);
-	glTexCoord2f(1.0, 0.0);
-	glVertex2f(1.0, -1.0);
-	glTexCoord2f(1.0, 1.0);
-	glVertex2f(1.0, 1.0);
-	glTexCoord2f(0.0, 1.0);
-	glVertex2f(-1.0, 1.0);
-	glEnd();
-	glDisable(GL_TEXTURE_2D);
+    // Draw some rotating square into the center, textured with a cat pic:
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
+    glScalef(0.5, 0.5, 1);
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0, 0.0);
+    glVertex2f(-1.0, -1.0);
+    glTexCoord2f(1.0, 0.0);
+    glVertex2f(1.0, -1.0);
+    glTexCoord2f(1.0, 1.0);
+    glVertex2f(1.0, 1.0);
+    glTexCoord2f(0.0, 1.0);
+    glVertex2f(-1.0, 1.0);
+    glEnd();
+    glDisable(GL_TEXTURE_2D);
 
-	// Poor man's sync until we use semaphores properly:
-	glFinish();
+    // Poor man's sync until we use semaphores properly:
+    glFinish();
 
-	// Unbind, so Vulkan can texture / blit from it:
-	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    // Unbind, so Vulkan can texture / blit from it:
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 static void demo_create_opengl_interop(struct demo* demo)
 {
-	GLint tilingMode;
-	GLenum err;
+    GLint tilingMode;
+    GLenum err;
 
-	while (glGetError());
+    while (glGetError());
 
-	// Create the texture for the FBO color attachment.
-	// This only reserves the ID, it doesn't allocate memory
-	glCreateTextures(GL_TEXTURE_2D, 1, &demo->color);
+    // Create the texture for the FBO color attachment.
+    // This only reserves the ID, it doesn't allocate memory
+    glCreateTextures(GL_TEXTURE_2D, 1, &demo->color);
 
-	// Import semaphores
-	glGenSemaphoresEXT(1, &demo->glReady);
-	glGenSemaphoresEXT(1, &demo->glComplete);
+    // Import semaphores
+    glGenSemaphoresEXT(1, &demo->glReady);
+    glGenSemaphoresEXT(1, &demo->glComplete);
 
-	err = glGetError();
-	if (err)
-		printf("Stage 1: GL ERROR: %i\n", err);
+    err = glGetError();
+    if (err)
+        printf("Stage 1: GL ERROR: %i\n", err);
 
 #ifdef WIN32
-	// Platform specific import.  On non-Win32 systems use glImportSemaphoreFdEXT instead
-	glImportSemaphoreWin32HandleEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glReady);
-	glImportSemaphoreWin32HandleEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glComplete);
+    // Platform specific import.  On non-Win32 systems use glImportSemaphoreFdEXT instead
+    glImportSemaphoreWin32HandleEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glReady);
+    glImportSemaphoreWin32HandleEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.glComplete);
 #else
-	glImportSemaphoreFdEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glReady);
-	glImportSemaphoreFdEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glComplete);
+    glImportSemaphoreFdEXT(demo->glReady, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glReady);
+    glImportSemaphoreFdEXT(demo->glComplete, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.glComplete);
 #endif
 
-	err = glGetError();
-	if (err)
-		printf("Stage 2: GL ERROR: %i\n", err);
+    err = glGetError();
+    if (err)
+        printf("Stage 2: GL ERROR: %i\n", err);
 
-	// Import memory
-	glCreateMemoryObjectsEXT(1, &demo->mem);
+    // Import memory
+    glCreateMemoryObjectsEXT(1, &demo->mem);
 #ifdef WIN32
-	// Platform specific import.  On non-Win32 systems use glImportMemoryFdEXT instead
-	glImportMemoryWin32HandleEXT(demo->mem, demo->textures[0].mem_alloc.allocationSize, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.memory);
+    // Platform specific import.  On non-Win32 systems use glImportMemoryFdEXT instead
+    glImportMemoryWin32HandleEXT(demo->mem, demo->textures[0].mem_alloc.allocationSize, GL_HANDLE_TYPE_OPAQUE_WIN32_EXT, demo->interophandles.memory);
 #else
-	glImportMemoryFdEXT(demo->mem, demo->textures[0].mem_alloc.allocationSize, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.memory);
+    glImportMemoryFdEXT(demo->mem, demo->textures[0].mem_alloc.allocationSize, GL_HANDLE_TYPE_OPAQUE_FD_EXT, demo->interophandles.memory);
 #endif
 
-	err = glGetError();
-	if (err)
-		printf("Stage 3: GL ERROR: %i\n", err);
+    err = glGetError();
+    if (err)
+        printf("Stage 3: GL ERROR: %i\n", err);
 
-	// Query actual tiling mode of texture. We need "optimal tiling" !
-	glBindTexture(GL_TEXTURE_2D, demo->color);
+    // Query actual tiling mode of texture. We need "optimal tiling" !
+    glBindTexture(GL_TEXTURE_2D, demo->color);
 
-	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
-	if (tilingMode == GL_OPTIMAL_TILING_EXT)
-		printf("Initially optimal tiling for shared texture.\n");
-	else if (tilingMode == GL_LINEAR_TILING_EXT)
-		printf("Initially linear tiling for shared texture.\n");
-	else
-		printf("Initially UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
+    if (tilingMode == GL_OPTIMAL_TILING_EXT)
+        printf("Initially optimal tiling for shared texture.\n");
+    else if (tilingMode == GL_LINEAR_TILING_EXT)
+        printf("Initially linear tiling for shared texture.\n");
+    else
+        printf("Initially UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
 
-	glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA8, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
-	printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
+    glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA8, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
+    printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
 
-	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &tilingMode);
-	printf("GL_TEXTURE_IMMUTABLE_FORMAT %i\n", tilingMode);
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &tilingMode);
+    printf("GL_TEXTURE_IMMUTABLE_FORMAT %i\n", tilingMode);
 
-	// Set tiling mode for rendering into texture to optimal tiling, instead
-	// of linear tiling, which worked for AMD gpu's, but not NVidia gpu's.
-	// Optimal tiling works for both AMD and NVidia:
-	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_LINEAR_TILING_EXT);
+    // Set tiling mode for rendering into texture to optimal tiling, instead
+    // of linear tiling, which worked for AMD gpu's, but not NVidia gpu's.
+    // Optimal tiling works for both AMD and NVidia:
+    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_LINEAR_TILING_EXT);
 
-	// Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
-	// and mip count should match the ones used by Vulkan to create the image and determine it's memory
-	// allocation.
-	GLenum internalFormat = (GLenum)0;
-	switch (demo->interop_tex_format) {
-	case VK_FORMAT_R8G8B8A8_UNORM:
-		internalFormat = GL_RGBA8;
-		printf("OpenGL->Vulkan interop texture is format RGBA8\n");
-		break;
+    // Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
+    // and mip count should match the ones used by Vulkan to create the image and determine it's memory
+    // allocation.
+    GLenum internalFormat = (GLenum)0;
+    switch (demo->interop_tex_format) {
+    case VK_FORMAT_R8G8B8A8_UNORM:
+        internalFormat = GL_RGBA8;
+        printf("OpenGL->Vulkan interop texture is format RGBA8\n");
+        break;
 
-	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-		internalFormat = GL_RGB10_A2;
-		printf("OpenGL->Vulkan interop texture is format RGB10A2\n");
-		break;
+    case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+        internalFormat = GL_RGB10_A2;
+        printf("OpenGL->Vulkan interop texture is format RGB10A2\n");
+        break;
 
-	case VK_FORMAT_R16G16B16A16_SFLOAT:
-		internalFormat = GL_RGBA16F;
-		printf("OpenGL->Vulkan interop texture is format RGBA16F\n");
-		break;
+    case VK_FORMAT_R16G16B16A16_SFLOAT:
+        internalFormat = GL_RGBA16F;
+        printf("OpenGL->Vulkan interop texture is format RGBA16F\n");
+        break;
 
-	default:
-		printf("demo_create_opengl_interop: Invalid texture format!\n");
-	}
+    default:
+        printf("demo_create_opengl_interop: Invalid texture format!\n");
+    }
 
-	glTextureStorageMem2DEXT(demo->color, 1, internalFormat, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
-	printf("Teximport size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
-	err = glGetError();
-	if (err)
-		printf("Stage 4: GL ERROR: %i\n", err);
+    glTextureStorageMem2DEXT(demo->color, 1, internalFormat, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
+    printf("Teximport size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
+    err = glGetError();
+    if (err)
+        printf("Stage 4: GL ERROR: %i\n", err);
 
-	// Query actual tiling mode of texture. We need "optimal tiling" !
-	glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
-	if (tilingMode == GL_OPTIMAL_TILING_EXT)
-		printf("Using optimal tiling for shared texture.\n");
-	else if (tilingMode == GL_LINEAR_TILING_EXT)
-		printf("Using linear tiling for shared texture.\n");
-	else
-		printf("Using UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
+    // Query actual tiling mode of texture. We need "optimal tiling" !
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
+    if (tilingMode == GL_OPTIMAL_TILING_EXT)
+        printf("Using optimal tiling for shared texture.\n");
+    else if (tilingMode == GL_LINEAR_TILING_EXT)
+        printf("Using linear tiling for shared texture.\n");
+    else
+        printf("Using UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
 
-	glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
-	err = glGetError();
-	if (err)
-		printf("Stage 5: GL ERROR: %i\n", err);
+    err = glGetError();
+    if (err)
+        printf("Stage 5: GL ERROR: %i\n", err);
 
-	// Create FBO, attach our imported/Vulkan-shared texture as color buffer, so
-	// we can render-to-texture in OpenGL, present in Vulkan:
-	glCreateFramebuffers(1, &demo->fbo);
-	glNamedFramebufferTexture(demo->fbo, GL_COLOR_ATTACHMENT0, demo->color, 0);
+    // Create FBO, attach our imported/Vulkan-shared texture as color buffer, so
+    // we can render-to-texture in OpenGL, present in Vulkan:
+    glCreateFramebuffers(1, &demo->fbo);
+    glNamedFramebufferTexture(demo->fbo, GL_COLOR_ATTACHMENT0, demo->color, 0);
 
-	// Load image again, this time into the backing store of the GL_TEXTURE_2D
-	// default binding 0 -- Yes, old school like it's 1992!
-	{
-		VkSubresourceLayout layout;
-		uint8_t* data = calloc(demo->textures[0].tex_width * demo->textures[0].tex_height * 4, sizeof(uint8_t));
-		int32_t width, height;
-		const char* filename = tex_files[0];
-		layout.rowPitch = 1024;
+    // Load image again, this time into the backing store of the GL_TEXTURE_2D
+    // default binding 0 -- Yes, old school like it's 1992!
+    {
+        VkSubresourceLayout layout;
+        uint8_t* data = calloc(demo->textures[0].tex_width * demo->textures[0].tex_height * 4, sizeof(uint8_t));
+        int32_t width, height;
+        const char* filename = tex_files[0];
+        layout.rowPitch = 1024;
 
-		if (!loadTexture(filename, data, &layout, &width, &height)) {
-			fprintf(stderr, "Error loading texture: %s\n", filename);
-		}
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, demo->textures[0].tex_width, demo->textures[0].tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-		free(data);
-	}
+        if (!loadTexture(filename, data, &layout, &width, &height)) {
+            fprintf(stderr, "Error loading texture: %s\n", filename);
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, demo->textures[0].tex_width, demo->textures[0].tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        free(data);
+    }
 
-	err = glGetError();
-	if (err)
-		printf("Stage 6: GL ERROR: %i\n", err);
+    err = glGetError();
+    if (err)
+        printf("Stage 6: GL ERROR: %i\n", err);
 }
 
 // On MS-Windows, make this a global, so it's available to WndProc()
@@ -2993,10 +2993,10 @@ static void demo_run(struct demo *demo) {
 // MS-Windows event handling function:
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
-	case WM_CHAR:
-		if (wParam != 'q')
-			break;
-		// fallthrough to WM_CLOSE if q key pressed:
+    case WM_CHAR:
+        if (wParam != 'q')
+            break;
+        // fallthrough to WM_CLOSE if q key pressed:
     case WM_CLOSE:
         PostQuitMessage(validation_error);
         break;
@@ -3239,7 +3239,7 @@ static void demo_handle_xcb_event(struct demo *demo,
 
         switch (key->detail) {
         case 0x9: // Escape
-	case 0x18: // q key
+    case 0x18: // q key
             demo->quit = true;
             break;
         case 0x71: // left arrow key
@@ -3849,8 +3849,8 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
     // Running under an X-Server, and have X11 / XCB connections, screens etc.
 
     // Get Extensions we need:
-    PFN_vkGetRandROutputDisplayEXT 	m_pGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkGetRandROutputDisplayEXT" );
-    PFN_vkAcquireXlibDisplayEXT		m_pAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkAcquireXlibDisplayEXT" );
+    PFN_vkGetRandROutputDisplayEXT     m_pGetRandROutputDisplayEXT = (PFN_vkGetRandROutputDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkGetRandROutputDisplayEXT" );
+    PFN_vkAcquireXlibDisplayEXT        m_pAcquireXlibDisplayEXT = (PFN_vkAcquireXlibDisplayEXT) vkGetInstanceProcAddr(demo->inst, "vkAcquireXlibDisplayEXT" );
 
     // Already leased?
     if (demo->leasedAlready)
@@ -4035,7 +4035,7 @@ static void demo_init_vk(struct demo *demo) {
             if (!strcmp(VK_KHR_DISPLAY_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
                 platformSurfaceExtFound = 1;
-		displayExtFound = 1;
+                displayExtFound = 1;
                 demo->extension_names[demo->enabled_extension_count++] =
                     VK_KHR_DISPLAY_EXTENSION_NAME;
             }
@@ -4059,25 +4059,25 @@ static void demo_init_vk(struct demo *demo) {
 #endif
 
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-			if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
-                instance_extensions[i].extensionName)) {
+            if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
+            instance_extensions[i].extensionName)) {
                 hdrInstanceExtsFound++;
                 printf("found acquire xlib display extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME;
             }
 
-			if (!strcmp(VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
-				instance_extensions[i].extensionName)) {
-				hdrInstanceExtsFound++;
-				printf("found direct mode display extension\n");
-				demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME;
-			}
+            if (!strcmp(VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
+                instance_extensions[i].extensionName)) {
+                hdrInstanceExtsFound++;
+                printf("found direct mode display extension\n");
+                demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME;
+            }
 #endif
 
             if (!strcmp(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
                 instance_extensions[i].extensionName)) {
                 hdrInstanceExtsFound++;
-				printf("found external memory capabilities extension\n");
+                printf("found external memory capabilities extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
             }
 
@@ -4091,13 +4091,13 @@ static void demo_init_vk(struct demo *demo) {
             // Windows only so far. Therefore considered optional for us atm.:
             if (!strcmp(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME,
                 instance_extensions[i].extensionName)) {
-				hdrInstanceExtsFound++;
-                printf("found swapchain color space extension\n");
+                hdrInstanceExtsFound++;
+                printf("found VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
             }
 
-			if (!strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
-                        instance_extensions[i].extensionName)) {
+            if (!strcmp(VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+                instance_extensions[i].extensionName)) {
                 if (demo->validate) {
                     demo->extension_names[demo->enabled_extension_count++] =
                         VK_EXT_DEBUG_REPORT_EXTENSION_NAME;
@@ -4112,7 +4112,7 @@ static void demo_init_vk(struct demo *demo) {
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
     if (hdrInstanceExtsFound < 3) {
 #else
-	if (hdrInstanceExtsFound < 4) {
+    if (hdrInstanceExtsFound < 4) {
 #endif
         ERR_EXIT("vkEnumerateInstanceExtensionProperties failed to find "
         "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
@@ -4286,25 +4286,25 @@ static void demo_init_vk(struct demo *demo) {
 #endif
 
     if (displayExtFound) {
-		uint32_t		display_property_count = 0;
-		VkDisplayPropertiesKHR	*display_properties;
-		err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, NULL);
-		if (err != VK_SUCCESS)
-			ERR_EXIT("Cannot enumerate physical device display properties\n",
-				 "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
+        uint32_t        display_property_count = 0;
+        VkDisplayPropertiesKHR    *display_properties;
+        err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, NULL);
+        if (err != VK_SUCCESS)
+            ERR_EXIT("Cannot enumerate physical device display properties\n",
+                 "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
 
-		display_properties = calloc(display_property_count, sizeof (VkDisplayPropertiesKHR));
-		err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, display_properties);
-		if (err != VK_SUCCESS)
-			ERR_EXIT("Cannot enumerate physical device display properties\n",
-				 "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
+        display_properties = calloc(display_property_count, sizeof (VkDisplayPropertiesKHR));
+        err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_property_count, display_properties);
+        if (err != VK_SUCCESS)
+            ERR_EXIT("Cannot enumerate physical device display properties\n",
+                 "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
 
-		for (uint32_t i = 0; i < display_property_count; i++) {
-			printf("name %s %dx%d pixels\n",
-			   display_properties[i].displayName,
-			   display_properties[i].physicalResolution.width,
-			   display_properties[i].physicalResolution.height);
-		}
+        for (uint32_t i = 0; i < display_property_count; i++) {
+            printf("name %s %dx%d pixels\n",
+               display_properties[i].displayName,
+               display_properties[i].physicalResolution.width,
+               display_properties[i].physicalResolution.height);
+        }
     }
 
     /* Look for device extensions */
@@ -4372,12 +4372,14 @@ static void demo_init_vk(struct demo *demo) {
             if (!strcmp(VK_EXT_HDR_METADATA_EXTENSION_NAME,
                 device_extensions[i].extensionName)) {
                 hdrmetadataExtFound = 1;
+                printf("found VK_EXT_HDR_METADATA_EXTENSION\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_EXT_HDR_METADATA_EXTENSION_NAME;
             }
 
             if (!strcmp(VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION_NAME,
                 device_extensions[i].extensionName)) {
                 amddisplaynativehdrExtFound = 1;
+                printf("found VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION_NAME;
             }
 
@@ -4467,16 +4469,16 @@ static void demo_init_vk(struct demo *demo) {
     }
 
 #if defined(WIN32)
-	if (!swapchainExtFound || !fullscreenexclusiveExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
-		!externalMemoryWin32ExtFound || !externalSemaphoreWin32ExtFound) {
-		ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
-			"the minimum set of extensions for HDR and OpenGL->Vulkan interop"
-			"\n\nDo you have a compatible "
-			"Vulkan installable client driver (ICD) installed?\nPlease "
-			"look at the Getting Started guide for additional "
-			"information.\n",
-			"vkCreateInstance Failure");
-	}
+    if (!swapchainExtFound || !fullscreenexclusiveExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
+        !externalMemoryWin32ExtFound || !externalSemaphoreWin32ExtFound) {
+        ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
+            "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
+            "\n\nDo you have a compatible "
+            "Vulkan installable client driver (ICD) installed?\nPlease "
+            "look at the Getting Started guide for additional "
+            "information.\n",
+            "vkCreateInstance Failure");
+    }
 #else
     if (!swapchainExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
         !externalMemoryFdExtFound || !externalSemaphoreFdExtFound) {
@@ -4733,10 +4735,10 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     GET_DEVICE_PROC_ADDR(demo->device, QueuePresentKHR);
 
 #if defined(WIN32)
-	// External memory fd extension:
-	GET_DEVICE_PROC_ADDR(demo->device, GetMemoryWin32HandleKHR);
-	// Switch for fullscreen exclusive mode:
-	GET_DEVICE_PROC_ADDR(demo->device, AcquireFullScreenExclusiveModeEXT);
+    // External memory fd extension:
+    GET_DEVICE_PROC_ADDR(demo->device, GetMemoryWin32HandleKHR);
+    // Switch for fullscreen exclusive mode:
+    GET_DEVICE_PROC_ADDR(demo->device, AcquireFullScreenExclusiveModeEXT);
 #else
     // External memory fd extension:
     GET_DEVICE_PROC_ADDR(demo->device, GetMemoryFdKHR);
@@ -5114,28 +5116,28 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
 void SetStdOutToNewConsole()
 {
-	// allocate a console for this app
-	AllocConsole();
+    // allocate a console for this app
+    AllocConsole();
 
-	// redirect unbuffered STDOUT to the console
-	HANDLE consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
-	int fileDescriptor = _open_osfhandle((intptr_t)consoleHandle, _O_TEXT);
-	FILE* fp = _fdopen(fileDescriptor, "w");
-	freopen_s(&fp, "CONOUT$", "w", stdout);
-	setvbuf(stdout, NULL, _IONBF, 0);
+    // redirect unbuffered STDOUT to the console
+    HANDLE consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+    int fileDescriptor = _open_osfhandle((intptr_t)consoleHandle, _O_TEXT);
+    FILE* fp = _fdopen(fileDescriptor, "w");
+    freopen_s(&fp, "CONOUT$", "w", stdout);
+    setvbuf(stdout, NULL, _IONBF, 0);
 
-	// give the console window a nicer title
-	SetConsoleTitle("Output");
+    // give the console window a nicer title
+    SetConsoleTitle("Output");
 
-	// give the console window a bigger buffer size
-	CONSOLE_SCREEN_BUFFER_INFO csbi;
-	if (GetConsoleScreenBufferInfo(consoleHandle, &csbi))
-	{
-		COORD bufferSize;
-		bufferSize.X = csbi.dwSize.X;
-		bufferSize.Y = 9999;
-		SetConsoleScreenBufferSize(consoleHandle, bufferSize);
-	}
+    // give the console window a bigger buffer size
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(consoleHandle, &csbi))
+    {
+        COORD bufferSize;
+        bufferSize.X = csbi.dwSize.X;
+        bufferSize.Y = 9999;
+        SetConsoleScreenBufferSize(consoleHandle, bufferSize);
+    }
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
@@ -5179,7 +5181,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
         argv = NULL;
     }
 
-	SetStdOutToNewConsole();
+    SetStdOutToNewConsole();
 
     demo_init(&demo, argc, argv);
 
@@ -5200,8 +5202,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
     demo_prepare(&demo);
 
-	// Initialize OpenGL side of OpenGL->Vulkan interop.
-	demo_create_opengl_interop(&demo);
+    // Initialize OpenGL side of OpenGL->Vulkan interop.
+    demo_create_opengl_interop(&demo);
 
     done = false; // initialize loop condition variable
 
@@ -5221,11 +5223,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine,
 
     demo_cleanup(&demo);
 
-	// Give user a chance to read console output:
-	ShowWindow(demo.window, SW_HIDE);
-	printf("Press a character key to exit!\n");
-	fflush(NULL);
-	_getch();
+    // Give user a chance to read console output:
+    ShowWindow(demo.window, SW_HIDE);
+    printf("Press a character key to exit!\n");
+    fflush(NULL);
+    _getch();
 
     return (int)msg.wParam;
 }
