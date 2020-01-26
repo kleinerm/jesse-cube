@@ -474,6 +474,9 @@ struct demo {
     VkFence flipcompletefence;
     int32_t waitMsecs;
 
+    // GPU/driver to select on multi-gpu / multi-driver setup:
+    int32_t gpuindex;
+
     // RandR output to select:
     char output_name[128];
 
@@ -4270,7 +4273,11 @@ static void demo_init_vk(struct demo *demo) {
         err = vkEnumeratePhysicalDevices(demo->inst, &gpu_count, physical_devices);
         assert(!err);
         /* For cube demo we just grab the first physical device */
-        demo->gpu = physical_devices[0];
+        if (demo->gpuindex < gpu_count)
+            demo->gpu = physical_devices[demo->gpuindex];
+        else
+            demo->gpu = physical_devices[0];
+
         free(physical_devices);
     } else {
         ERR_EXIT("vkEnumeratePhysicalDevices reported zero accessible devices.\n\n"
@@ -4542,6 +4549,7 @@ static void demo_init_vk(struct demo *demo) {
         }
     }
     vkGetPhysicalDeviceProperties(demo->gpu, &demo->gpu_props);
+    printf("Vulkan driver/gpu: %s\n", (const char*) demo->gpu_props.deviceName);
 
     /* Call with NULL data to get count */
     vkGetPhysicalDeviceQueueFamilyProperties(demo->gpu,
@@ -4989,8 +4997,14 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
     demo->waitMsecs = 0;
     demo->output_name[0] = 0;
+    demo->gpuindex = 0;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--gpu") == 0 && i < argc - 1 &&
+            sscanf(argv[i + 1], "%d", (int*) &demo->gpuindex) == 1) {
+            i++;
+            continue;
+        }
         if (strcmp(argv[i], "--output") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%s", (char*) &demo->output_name) == 1) {
             i++;
@@ -5075,7 +5089,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
         fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--output <RandROutputName>]\n"
-                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>]\n"
+                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
