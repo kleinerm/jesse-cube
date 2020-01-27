@@ -456,6 +456,9 @@ struct demo {
     VkBool32 interop_tiled_texture;
     VkBool32 interop_enabled;
 
+    // MK HDR stuff:
+    VkBool32 hdr_enabled;
+
     // MK Stuff on the OpenGL side:
     GLuint glReady;
     GLuint glComplete;
@@ -3988,6 +3991,8 @@ static void demo_init_vk(struct demo *demo) {
     VkBool32 platformSurfaceExtFound = 0;
     VkBool32 kmsExtFound = 0;
     VkBool32 displayExtFound = 0;
+    unsigned int interopExtsFound = 0;
+    unsigned int fullscreenInstanceExtsFound = 0;
     unsigned int hdrInstanceExtsFound = 0;
     memset(demo->extension_names, 0, sizeof(demo->extension_names));
 
@@ -4067,14 +4072,14 @@ static void demo_init_vk(struct demo *demo) {
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
             if (!strcmp(VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME,
             instance_extensions[i].extensionName)) {
-                hdrInstanceExtsFound++;
+                fullscreenInstanceExtsFound++;
                 printf("found acquire xlib display extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_EXT_ACQUIRE_XLIB_DISPLAY_EXTENSION_NAME;
             }
 
             if (!strcmp(VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME,
                 instance_extensions[i].extensionName)) {
-                hdrInstanceExtsFound++;
+                fullscreenInstanceExtsFound++;
                 printf("found direct mode display extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_EXT_DIRECT_MODE_DISPLAY_EXTENSION_NAME;
             }
@@ -4082,14 +4087,14 @@ static void demo_init_vk(struct demo *demo) {
 
             if (!strcmp(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
                 instance_extensions[i].extensionName)) {
-                hdrInstanceExtsFound++;
+                interopExtsFound++;
                 printf("found external memory capabilities extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME;
             }
 
             if (!strcmp(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
                 instance_extensions[i].extensionName)) {
-                hdrInstanceExtsFound++;
+                interopExtsFound++;
                 printf("found external semaphore capabilities extension\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME;
             }
@@ -4113,20 +4118,6 @@ static void demo_init_vk(struct demo *demo) {
         }
 
         free(instance_extensions);
-    }
-
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
-    if (hdrInstanceExtsFound < 3) {
-#else
-    if (hdrInstanceExtsFound < 4) {
-#endif
-        ERR_EXIT("vkEnumerateInstanceExtensionProperties failed to find "
-        "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
-        "\n\nDo you have a compatible "
-        "Vulkan installable client driver (ICD) installed?\nPlease "
-        "look at the Getting Started guide for additional "
-        "information.\n",
-        "vkCreateInstance Failure");
     }
 
     if (!surfaceExtFound) {
@@ -4478,29 +4469,67 @@ static void demo_init_vk(struct demo *demo) {
         free(device_extensions);
     }
 
-#if defined(WIN32)
-    if (!swapchainExtFound || !fullscreenexclusiveExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
-        !externalMemoryWin32ExtFound || !externalSemaphoreWin32ExtFound) {
+    if (!swapchainExtFound || !maintenance1ExtFound) {
         ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
-            "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
+        "the swapchain or maintenance 1 extension."
+        "\n\nDo you have a compatible "
+        "Vulkan installable client driver (ICD) installed?\nPlease "
+        "look at the Getting Started guide for additional "
+        "information.\n",
+        "vkCreateInstance Failure");
+    }
+
+#if defined(WIN32)
+    if (!fullscreenexclusiveExtFound) {
+#else
+    if (fullscreenInstanceExtsFound < 2) {
+#endif
+        ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
+        "the fullscreen exclusive extension."
+        "\n\nDo you have a compatible "
+        "Vulkan installable client driver (ICD) installed?\nPlease "
+        "look at the Getting Started guide for additional "
+        "information.\n",
+        "vkCreateInstance Failure");
+    }
+
+    if (demo->interop_enabled) {
+#if defined(WIN32)
+        if (!externalMemoryExtFound || !externalSemaphoreExtFound || interopExtsFound < 2 ||
+            !externalMemoryWin32ExtFound || !externalSemaphoreWin32ExtFound) {
+            ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
+                "the minimum set of extensions for OpenGL->Vulkan interop"
+                "\n\nDo you have a compatible "
+                "Vulkan installable client driver (ICD) installed?\nPlease "
+                "look at the Getting Started guide for additional "
+                "information.\n",
+                "vkCreateInstance Failure");
+        }
+#else
+        if (!externalMemoryExtFound || !externalSemaphoreExtFound || interopExtsFound < 2 ||
+            !externalMemoryFdExtFound || !externalSemaphoreFdExtFound) {
+            ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
+                    "the minimum set of extensions for OpenGL->Vulkan interop"
+                    "\n\nDo you have a compatible "
+                    "Vulkan installable client driver (ICD) installed?\nPlease "
+                    "look at the Getting Started guide for additional "
+                    "information.\n",
+                    "vkCreateInstance Failure");
+        }
+#endif
+    }
+
+    if (demo->hdr_enabled) {
+        if (!hdrmetadataExtFound) {
+            ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
+            "the minimum set of extensions for HDR."
             "\n\nDo you have a compatible "
             "Vulkan installable client driver (ICD) installed?\nPlease "
             "look at the Getting Started guide for additional "
             "information.\n",
             "vkCreateInstance Failure");
+        }
     }
-#else
-    if (!swapchainExtFound || !maintenance1ExtFound /*|| !hdrmetadataExtFound */ || !externalMemoryExtFound || !externalSemaphoreExtFound ||
-        !externalMemoryFdExtFound || !externalSemaphoreFdExtFound) {
-        ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
-                 "the minimum set of extensions for HDR and OpenGL->Vulkan interop"
-                 "\n\nDo you have a compatible "
-                 "Vulkan installable client driver (ICD) installed?\nPlease "
-                 "look at the Getting Started guide for additional "
-                 "information.\n",
-                 "vkCreateInstance Failure");
-    }
-#endif
 
     if (demo->validate) {
         demo->CreateDebugReportCallback =
@@ -5003,8 +5032,14 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->gpuindex = 0;
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
+    demo->hdr_enabled = true;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--no-hdr") == 0) {
+            demo->hdr_enabled = false;
+            continue;
+        }
+
         if (strcmp(argv[i], "--no-glinterop") == 0) {
             demo->interop_enabled = false;
             continue;
@@ -5106,8 +5141,8 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--output <RandROutputName>]\n"
-                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr]\n"
+                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
