@@ -453,6 +453,8 @@ struct demo {
     // MK OpenGL -> Vulkan interop stuff:
     PFN_vkGetMemoryFdKHR fpGetMemoryFdKHR;
     VkFormat interop_tex_format;
+    VkBool32 interop_tiled_texture;
+    VkBool32 interop_enabled;
 
     // MK Stuff on the OpenGL side:
     GLuint glReady;
@@ -1774,11 +1776,6 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
     tex_obj->tex_width = tex_width;
     tex_obj->tex_height = tex_height;
 
-    // MK TODO: Fallback sequence:
-    // tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
-    // tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-    // tex_format = VK_FORMAT_R8G8B8A8_UNORM;
-
     const VkImageCreateInfo image_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = NULL,
@@ -1812,7 +1809,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
     };
 
     tex_obj->mem_alloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    tex_obj->mem_alloc.pNext = &exportAllocInfo;
+    tex_obj->mem_alloc.pNext = (demo->interop_enabled) ? &exportAllocInfo : NULL;
     tex_obj->mem_alloc.allocationSize = mem_reqs.size;
     tex_obj->mem_alloc.memoryTypeIndex = 0;
 
@@ -1832,7 +1829,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
 
     memset(&demo->interophandles, 0, sizeof(demo->interophandles));
 
-    if (usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) {
+    if ((usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) && demo->interop_enabled) {
 #ifdef WIN32
         // Get handle for shared memory with OpenGL:
         VkMemoryGetWin32HandleInfoKHR memorygetwinhandleinfo = {
@@ -1911,7 +1908,9 @@ static void demo_prepare_textures(struct demo *demo) {
         // MK: Need linear tiling for OpenGL interop on AMD:
         if (((props.linearTilingFeatures &
             (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) &&
-            !demo->use_staging_buffer) {
+            !demo->use_staging_buffer &&
+            !demo->interop_tiled_texture) {
+            demo->interop_tiled_texture = false;
             printf("Will use linear textures for OpenGL->Vulkan interop via render-to-texture to texture %i\n", i);
             /* Device can texture using linear textures */
             demo_prepare_texture_image(
@@ -1921,8 +1920,7 @@ static void demo_prepare_textures(struct demo *demo) {
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
 #endif
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-                0); // MK Require device local bit.
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // MK Require device local bit.
             // Nothing in the pipeline needs to be complete to start, and don't allow fragment
             // shader to run until layout transition completes
             demo_set_image_layout(demo, demo->textures[i].image, VK_IMAGE_ASPECT_COLOR_BIT,
@@ -1930,10 +1928,11 @@ static void demo_prepare_textures(struct demo *demo) {
                                   VK_ACCESS_HOST_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             demo->staging_texture.image = 0;
-        } else if (props.optimalTilingFeatures &
-                   VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
+            } else if ((props.linearTilingFeatures &
+                (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) {
             /* Must use staging buffer to copy linear texture to optimized */
-
+            demo->interop_tiled_texture = true;
+            printf("Will use optimal tiled textures for OpenGL->Vulkan interop via render-to-texture to texture %i\n", i);
             memset(&demo->staging_texture, 0, sizeof(demo->staging_texture));
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->staging_texture, VK_IMAGE_TILING_LINEAR,
@@ -1943,8 +1942,9 @@ static void demo_prepare_textures(struct demo *demo) {
 
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->textures[i], VK_IMAGE_TILING_OPTIMAL,
-                (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT),
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+                (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                ((i == 0) ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT : 0)),
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);  // MK Require device local bit.
 
             demo_set_image_layout(demo, demo->staging_texture.image,
                                   VK_IMAGE_ASPECT_COLOR_BIT,
@@ -2793,6 +2793,9 @@ void draw_opengl(struct demo* demo)
     int w = demo->textures[0].tex_width;
     int h = demo->textures[0].tex_height;
 
+    if (!demo->interop_enabled)
+        return;
+
     if (firsttime) {
         glViewport(0, 0, demo->textures[0].tex_width, demo->textures[0].tex_height);
         printf("RTT size: %i x %i\n", w, h);
@@ -2843,6 +2846,9 @@ static void demo_create_opengl_interop(struct demo* demo)
 {
     GLint tilingMode;
     GLenum err;
+
+    if (!demo->interop_enabled)
+        return;
 
     while (glGetError());
 
@@ -2901,11 +2907,8 @@ static void demo_create_opengl_interop(struct demo* demo)
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &tilingMode);
     printf("GL_TEXTURE_IMMUTABLE_FORMAT %i\n", tilingMode);
 
-    // Set tiling mode for rendering into texture to optimal tiling, instead
-    // of linear tiling, which worked for AMD gpu's, but not NVidia gpu's.
-    // Optimal tiling works for both AMD and NVidia:
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_OPTIMAL_TILING_EXT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, GL_LINEAR_TILING_EXT);
+    // Set tiling mode for rendering into textures:
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, (demo->interop_tiled_texture) ? GL_OPTIMAL_TILING_EXT : GL_LINEAR_TILING_EXT);
 
     // Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
     // and mip count should match the ones used by Vulkan to create the image and determine it's memory
@@ -4998,23 +5001,38 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->waitMsecs = 0;
     demo->output_name[0] = 0;
     demo->gpuindex = 0;
+    demo->interop_tiled_texture = false;
+    demo->interop_enabled = true;
 
     for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--no-glinterop") == 0) {
+            demo->interop_enabled = false;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--force-tiling") == 0) {
+            demo->interop_tiled_texture = true;
+            continue;
+        }
+
         if (strcmp(argv[i], "--gpu") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->gpuindex) == 1) {
             i++;
             continue;
         }
+
         if (strcmp(argv[i], "--output") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%s", (char*) &demo->output_name) == 1) {
             i++;
             continue;
         }
+
         if (strcmp(argv[i], "--ifi") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->waitMsecs) == 1) {
             i++;
             continue;
         }
+
         if (strcmp(argv[i], "--format") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->interop_tex_format) == 1) {
             i++;
@@ -5088,7 +5106,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--output <RandROutputName>]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--output <RandROutputName>]\n"
                         "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
