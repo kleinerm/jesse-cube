@@ -1919,11 +1919,10 @@ static void demo_prepare_textures(struct demo *demo) {
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->textures[i], VK_IMAGE_TILING_LINEAR,
                 VK_IMAGE_USAGE_SAMPLED_BIT | ((i == 0) ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT : 0),
-#if !defined(WIN32)
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-                VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
-#endif
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // MK Require device local bit.
+                ((!demo->interop_enabled) ?
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT :
+                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)); // MK Require device local bit.
+
             // Nothing in the pipeline needs to be complete to start, and don't allow fragment
             // shader to run until layout transition completes
             demo_set_image_layout(demo, demo->textures[i].image, VK_IMAGE_ASPECT_COLOR_BIT,
