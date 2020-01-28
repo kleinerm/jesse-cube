@@ -1465,9 +1465,15 @@ static void demo_prepare_buffers(struct demo *demo) {
     }
 
 #if defined(WIN32)
+    VkSurfaceFullScreenExclusiveWin32InfoEXT fullscreen_exclusive_info_win32 = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT,
+        .pNext = NULL,
+        .hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
+    };
+
     VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
         .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
-        .pNext = NULL,
+        .pNext = &fullscreen_exclusive_info_win32,
         .fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
     };
 #endif
@@ -4653,8 +4659,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     createInfo.hinstance = demo->connection;
     createInfo.hwnd = demo->window;
 
-    err =
-        vkCreateWin32SurfaceKHR(demo->inst, &createInfo, NULL, &demo->surface);
+    err = vkCreateWin32SurfaceKHR(demo->inst, &createInfo, NULL, &demo->surface);
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
     VkWaylandSurfaceCreateInfoKHR createInfo;
     createInfo.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
