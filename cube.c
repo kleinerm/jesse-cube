@@ -3045,7 +3045,9 @@ static void demo_create_window(struct demo *demo) {
     WNDCLASSEX win_class;
     int pf;
     GLenum glerr;
+    HWND glwindow;
     HDC hDC;
+    HGLRC glcontext;
     PIXELFORMATDESCRIPTOR pfd;
 
     // Initialize the window class structure:
@@ -3068,6 +3070,7 @@ static void demo_create_window(struct demo *demo) {
         fflush(stdout);
         exit(1);
     }
+
     // Create window with the registered class:
     //RECT wr = {0, 0, GetSystemMetrics(SM_CXFULLSCREEN), GetSystemMetrics(SM_CYFULLSCREEN)};
     //AdjustWindowRectEx(&wr, WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, WS_EX_TOPMOST | WS_EX_APPWINDOW);
@@ -3093,7 +3096,26 @@ static void demo_create_window(struct demo *demo) {
     demo->minsize.x = GetSystemMetrics(SM_CXSCREEN); // GetSystemMetrics(SM_CXMINTRACK);
     demo->minsize.y = GetSystemMetrics(SM_CYSCREEN); // GetSystemMetrics(SM_CYMINTRACK) + 1;
 
-    hDC = GetDC(demo->window);
+    glwindow = CreateWindowEx(0,
+                              demo->name,           // class name
+                              demo->name,           // app name
+                              WS_POPUP | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, // window style
+                              0, 0,  // x/y coords
+                              100, // width
+                              100, // height
+                              NULL, // handle to parent
+                              NULL, // handle to menu
+                              demo->connection, // hInstance
+                              NULL); // no extra parameters
+
+    if (!glwindow) {
+        // It didn't work, so try to give a useful error:
+        printf("Cannot create a OpenGL dummy window!\n");
+        fflush(stdout);
+        exit(1);
+    }
+
+    hDC = GetDC(glwindow);
 
     // Build pixelformat descriptor:
     memset(&pfd, 0, sizeof(pfd));
@@ -3118,7 +3140,7 @@ static void demo_create_window(struct demo *demo) {
         exit(1);
     }
 
-    HGLRC glcontext = wglCreateContext(hDC);
+    glcontext = wglCreateContext(hDC);
     if (glcontext == NULL) {
         printf("\nOpenGL context creation failed: Unknown, Win32 specific.\n\n");
         exit(1);
