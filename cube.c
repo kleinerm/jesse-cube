@@ -1936,7 +1936,7 @@ static void demo_prepare_textures(struct demo *demo) {
                                   VK_ACCESS_HOST_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                                   VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
             demo->staging_texture.image = 0;
-            } else if ((props.linearTilingFeatures &
+        } else if ((props.optimalTilingFeatures &
                 (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) {
             /* Must use staging buffer to copy linear texture to optimized */
             demo->interop_tiled_texture = true;
