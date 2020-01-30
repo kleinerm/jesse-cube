@@ -3381,6 +3381,8 @@ static void demo_create_xcb_window(struct demo *demo) {
     value_list[1] = XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_EXPOSURE |
                     XCB_EVENT_MASK_STRUCTURE_NOTIFY;
 
+    demo->visualID = demo->screen->root_visual;
+
     // MK TODO: Adjust x start position to viewport of output which displays Vulkan,
     // instead of hard-coded 300 for the internal output:
     xcb_create_window(demo->connection, XCB_COPY_FROM_PARENT, demo->xcb_window,
