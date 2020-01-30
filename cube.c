@@ -3870,7 +3870,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
             /* Find the first connected but unused output */
             if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED) {
                 printf("Found connected output %s.\n", xcb_randr_get_output_info_name(goi_r));
-                if (!demo->output_name[0] || !strcmp(demo->output_name, xcb_randr_get_output_info_name(goi_r))) {
+                if (!demo->output_name[0] || strstr(xcb_randr_get_output_info_name(goi_r), demo->output_name)) {
                     output = ro[o];
                     printf("Selected output %s.\n", xcb_randr_get_output_info_name(goi_r));
                 }
