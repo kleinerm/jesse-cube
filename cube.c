@@ -4904,6 +4904,10 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                     printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                     break;
 
+                case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+                    printf("[%i] Swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
+                    break;
+
                 case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
                     printf("[%i] Swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
                     break;
@@ -4931,8 +4935,17 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         }
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+            if (surfFormats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+                printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
+                demo->format = surfFormats[i].format;
+                demo->color_space = surfFormats[i].colorSpace;
+                break;
+            }
+        }
+
+        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
-                printf("[%i] Using swapchain format RGB10A2\n", i);
+                printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
