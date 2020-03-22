@@ -4904,6 +4904,10 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                     printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                     break;
 
+                case VK_FORMAT_R16G16B16A16_UNORM:
+                    printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_UNORM\n", i);
+                    break;
+
                 case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
                     printf("[%i] Swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
                     break;
@@ -4921,13 +4925,24 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                     break;
 
                 default:
-                    printf("[%i] Swapchain format unknown 0x%x\n", i, surfFormats[i].format);
+                    printf("[%i] Swapchain format unknown %d\n", i, surfFormats[i].format);
             }
         }
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-                printf("[%i] Using swapchain format RGBA16F\n", i);
+                printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
+                //continue;
+                demo->format = surfFormats[i].format;
+                demo->color_space = surfFormats[i].colorSpace;
+                break;
+            }
+        }
+
+        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+            if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_UNORM) {
+                printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_UNORM\n", i);
+                continue; // Not displayable on AMD Raven + Windows-10 at least!
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
@@ -4937,6 +4952,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
                 printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
+                //continue;
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
@@ -4957,6 +4973,65 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             demo->format = surfFormats[0].format;
             demo->color_space = surfFormats[0].colorSpace;
         }
+    }
+
+    switch (demo->color_space) {
+        case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+            printf("Using colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR\n");
+            break;
+
+        case VK_COLOR_SPACE_BT709_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT709_LINEAR_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_BT709_NONLINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT709_NONLINEAR_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT\n");
+            break;
+
+/*
+        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
+            break;
+*/
+
+        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_HDR10_ST2084_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_HDR10_ST2084_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_HDR10_HLG_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_HDR10_HLG_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_DOLBYVISION_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_DOLBYVISION_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_PASS_THROUGH_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_PASS_THROUGH_EXT\n");
+            break;
+
+        case VK_COLOR_SPACE_DISPLAY_NATIVE_AMD:
+            printf("Using colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD\n");
+            break;
+
+        default:
+            printf("Using colorspace unknown 0x%x\n", demo->color_space);
     }
 
     demo->quit = false;
