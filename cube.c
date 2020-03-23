@@ -4893,12 +4893,30 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         assert(formatCount >= 1);
 
-        // Try to get RGBA16F float, then RGB10A2 as second choice, then
+        // Try to get RGBA16F float, then RGB10A2 formats as second choice, then
         // a fallback to default RGBA8:
         demo->format = VK_FORMAT_UNDEFINED;
         printf("Number of surface formats: %d\n", formatCount);
 
         for (i = 0; i < formatCount; i++) {
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_DOLBYVISION_EXT    - ", i);
+
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_ST2084_EXT   - ", i);
+
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_HLG_EXT      - ", i);
+
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT  - ", i);
+
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_DISPLAY_NATIVE_AMD)
+                printf("[%i] For colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD - ", i);
+
+            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+                printf("[%i] For colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR - ", i);
+
             switch (surfFormats[i].format) {
                 case VK_FORMAT_R16G16B16A16_SFLOAT:
                     printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
@@ -4931,28 +4949,30 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-                printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                 //continue;
+                printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
             }
         }
 
+        /* // Not displayable on AMD Raven + Windows-10 at least!
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_UNORM) {
+                //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_UNORM\n", i);
-                continue; // Not displayable on AMD Raven + Windows-10 at least!
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
             }
         }
+        */
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
-                printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
                 //continue;
+                printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
                 break;
@@ -4961,6 +4981,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+                //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
                 demo->format = surfFormats[i].format;
                 demo->color_space = surfFormats[i].colorSpace;
@@ -4974,6 +4995,25 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             demo->color_space = surfFormats[0].colorSpace;
         }
     }
+
+    // Note: For all but VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, the application must apply the
+    // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
+    //
+    // These work on AMD Raven Ridge: With the Monitor in FreeSync Ultimate mode.
+    //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;      // FreeSync standard HDR- Different characteristics depending on RGBA16G or ARGB2101010
+    //demo->color_space = VK_COLOR_SPACE_BT2020_LINEAR_EXT;     // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
+    //demo->color_space = VK_COLOR_SPACE_DISPLAY_NATIVE_AMD;    // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
+
+    // These don't trigger HDR on AMD Raven Ridge: VK_COLOR_SPACE_HDR10_HLG_EXT VK_COLOR_SPACE_DOLBYVISION_EXT
+    // Neither do non-HDR color spaces...
+
+    // These work on AMD Raven Ridge: With the Monitor in standard or standard FreeSync mode:
+    // 8 bit format VK_FORMAT_B8G8R8A8_UNORM and
+    // 10 bit formats VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_A2R10G10B10_UNORM_PACK32 only work with:
+    //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+
+    // RGBA16F 16 bpc float format always triggers HDR on AMD Raven Ridge, with all colorspaces,
+    // even standard sRGB, iff FreeSync2 HDR is disabled, but not otherwise - see above.
 
     switch (demo->color_space) {
         case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
@@ -4991,20 +5031,6 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         case VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT:
             printf("Using colorspace VK_COLOR_SPACE_DISPLAY_P3_LINEAR_EXT\n");
             break;
-
-/*
-        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
-            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
-            break;
-
-        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
-            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
-            break;
-
-        case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
-            printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
-            break;
-*/
 
         case VK_COLOR_SPACE_BT2020_LINEAR_EXT:
             printf("Using colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT\n");
