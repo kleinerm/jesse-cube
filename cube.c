@@ -4996,24 +4996,28 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         }
     }
 
-    // Note: For all but VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, the application must apply the
-    // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
-    //
-    // These work on AMD Raven Ridge: With the Monitor in FreeSync Ultimate mode.
-    //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;      // FreeSync standard HDR- Different characteristics depending on RGBA16G or ARGB2101010
-    //demo->color_space = VK_COLOR_SPACE_BT2020_LINEAR_EXT;     // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
-    //demo->color_space = VK_COLOR_SPACE_DISPLAY_NATIVE_AMD;    // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
+    if (demo->hdr_enabled) {
+        printf("Trying to enable HDR mode...\n");
 
-    // These don't trigger HDR on AMD Raven Ridge: VK_COLOR_SPACE_HDR10_HLG_EXT VK_COLOR_SPACE_DOLBYVISION_EXT
-    // Neither do non-HDR color spaces...
+        // Note: For all but VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, the application must apply the
+        // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
+        //
+        // These work on AMD Raven Ridge: With the Monitor in FreeSync Ultimate mode.
+        //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;      // FreeSync standard HDR- Different characteristics depending on RGBA16G or ARGB2101010
+        //demo->color_space = VK_COLOR_SPACE_BT2020_LINEAR_EXT;     // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
+        //demo->color_space = VK_COLOR_SPACE_DISPLAY_NATIVE_AMD;    // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
 
-    // These work on AMD Raven Ridge: With the Monitor in standard or standard FreeSync mode:
-    // 8 bit format VK_FORMAT_B8G8R8A8_UNORM and
-    // 10 bit formats VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_A2R10G10B10_UNORM_PACK32 only work with:
-    //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+        // These don't trigger HDR on AMD Raven Ridge: VK_COLOR_SPACE_HDR10_HLG_EXT VK_COLOR_SPACE_DOLBYVISION_EXT
+        // Neither do non-HDR color spaces...
 
-    // RGBA16F 16 bpc float format always triggers HDR on AMD Raven Ridge, with all colorspaces,
-    // even standard sRGB, iff FreeSync2 HDR is disabled, but not otherwise - see above.
+        // These work on AMD Raven Ridge: With the Monitor in standard or standard FreeSync mode:
+        // 8 bit format VK_FORMAT_B8G8R8A8_UNORM and
+        // 10 bit formats VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_A2R10G10B10_UNORM_PACK32 only work with:
+        demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+
+        // RGBA16F 16 bpc float format always triggers HDR on AMD Raven Ridge, with all colorspaces,
+        // even standard sRGB, iff FreeSync2 HDR is disabled, but not otherwise - see above.
+    }
 
     switch (demo->color_space) {
         case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
