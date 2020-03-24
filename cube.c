@@ -458,6 +458,7 @@ struct demo {
 
     // MK HDR stuff:
     VkBool32 hdr_enabled;
+    PFN_vkSetHdrMetadataEXT fpSetHdrMetadataEXT;
 
     // MK Stuff on the OpenGL side:
     GLuint glReady;
@@ -1070,13 +1071,17 @@ void DemoUpdateTargetIPD(struct demo *demo) {
 void draw_opengl(struct demo *demo);
 
 static void demo_draw(struct demo *demo) {
+    static uint64_t tStartTime = 0;
     static uint64_t tlastSwapComplete = 0;
     static uint64_t tPostSwapRequested = 0;
+    static bool firsttime = true;
     uint64_t tSwapComplete;
     VkResult U_ASSERT_ONLY err;
 
-    if (tlastSwapComplete == 0)
+    if (tlastSwapComplete == 0) {
         tlastSwapComplete = getTimeInNanoseconds();
+        tStartTime = tlastSwapComplete;
+    }
 
     if (false) {
         // Ensure no more than FRAME_LAG renderings are outstanding
@@ -1283,6 +1288,36 @@ static void demo_draw(struct demo *demo) {
         if (demo->VK_GOOGLE_display_timing_enabled) {
             present.pNext = &present_time;
         }
+    }
+
+    // Assign HDR meta data for this frame:
+    if (demo->hdr_enabled && firsttime) {
+        VkHdrMetadataEXT hdr_metadata;
+
+        // Note: Chosen default values are the mastering display properties of
+        // my Samsung CH27HG70 FreeSync2 HDR monitor.
+        VkXYColorEXT pr = { 0.6767, 0.3164 };
+        VkXYColorEXT pg = { 0.2753, 0.6611 };
+        VkXYColorEXT pb = { 0.1523, 0.0615 };
+        VkXYColorEXT wp = { 0.3134, 0.3291 };
+
+        hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+        hdr_metadata.pNext = NULL;
+        hdr_metadata.displayPrimaryRed = pr;
+        hdr_metadata.displayPrimaryGreen = pg;
+        hdr_metadata.displayPrimaryBlue = pb;
+        hdr_metadata.whitePoint = wp;
+        hdr_metadata.maxLuminance = 603.666;
+        hdr_metadata.minLuminance = 0.049;
+        hdr_metadata.maxContentLightLevel = 603.666;
+        hdr_metadata.maxFrameAverageLightLevel = 250;
+
+        double tElapsed = ((double) (tSwapComplete - tStartTime)) / 1e9;
+        //hdr_metadata.displayPrimaryGreen.x = 0.5 + 0.5 * sin(2 * 3.141592654 * 0.05 * tElapsed);
+
+        firsttime = false;
+        printf("Set HDR DATA\n");
+        demo->fpSetHdrMetadataEXT(demo->device, 1, &demo->swapchain, &hdr_metadata);
     }
 
 #ifndef WIN32
@@ -4827,8 +4862,12 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     GET_DEVICE_PROC_ADDR(demo->device, GetMemoryFdKHR);
 #endif
 
+    if (demo->hdr_enabled)
+        GET_DEVICE_PROC_ADDR(demo->device, SetHdrMetadataEXT);
+
+    printf("fpSetHdrMetadataEXT = %p\n", demo->fpSetHdrMetadataEXT);
+
     /*
-    GET_DEVICE_PROC_ADDR(demo->device, );
     GET_DEVICE_PROC_ADDR(demo->device, );
     GET_DEVICE_PROC_ADDR(demo->device, );
     GET_DEVICE_PROC_ADDR(demo->device, );
@@ -5003,12 +5042,14 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
         //
         // These work on AMD Raven Ridge: With the Monitor in FreeSync Ultimate mode.
+        // Note: Only on Windows-10. On Linux + amdvlk, only VK_COLOR_SPACE_HDR10_ST2084_EXT works.
+
         //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;      // FreeSync standard HDR- Different characteristics depending on RGBA16G or ARGB2101010
         //demo->color_space = VK_COLOR_SPACE_BT2020_LINEAR_EXT;     // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
         //demo->color_space = VK_COLOR_SPACE_DISPLAY_NATIVE_AMD;    // FreeSync2 HDR - Different characteristics depending on RGBA16G or ARGB2101010
 
         // These don't trigger HDR on AMD Raven Ridge: VK_COLOR_SPACE_HDR10_HLG_EXT VK_COLOR_SPACE_DOLBYVISION_EXT
-        // Neither do non-HDR color spaces...
+        // Neither do non-HDR color spaces... demo->color_space = VK_COLOR_SPACE_HDR10_HLG_EXT;
 
         // These work on AMD Raven Ridge: With the Monitor in standard or standard FreeSync mode:
         // 8 bit format VK_FORMAT_B8G8R8A8_UNORM and
