@@ -435,6 +435,7 @@ struct demo {
 
     PFN_vkGetPhysicalDeviceSurfaceSupportKHR fpGetPhysicalDeviceSurfaceSupportKHR;
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR fpGetPhysicalDeviceSurfaceCapabilitiesKHR;
+    PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR fpGetPhysicalDeviceSurfaceCapabilities2KHR;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR fpGetPhysicalDeviceSurfaceFormatsKHR;
     PFN_vkGetPhysicalDeviceSurfacePresentModesKHR fpGetPhysicalDeviceSurfacePresentModesKHR;
     PFN_vkCreateSwapchainKHR fpCreateSwapchainKHR;
@@ -4077,6 +4078,14 @@ static void demo_init_vk(struct demo *demo) {
                 demo->extension_names[demo->enabled_extension_count++] =
                     VK_KHR_SURFACE_EXTENSION_NAME;
             }
+
+            if (!strcmp(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
+                        instance_extensions[i].extensionName)) {
+                platformSurfaceExtFound = 1;
+                demo->extension_names[demo->enabled_extension_count++] =
+                VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME;
+            }
+
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
             if (!strcmp(VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
                         instance_extensions[i].extensionName)) {
@@ -4090,13 +4099,6 @@ static void demo_init_vk(struct demo *demo) {
                 platformSurfaceExtFound = 1;
                 demo->extension_names[demo->enabled_extension_count++] =
                     VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
-            }
-
-            if (!strcmp(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
-                instance_extensions[i].extensionName)) {
-                platformSurfaceExtFound = 1;
-                demo->extension_names[demo->enabled_extension_count++] =
-                    VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME;
             }
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
@@ -4683,6 +4685,7 @@ static void demo_init_vk(struct demo *demo) {
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceFormatsKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfacePresentModesKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetSwapchainImagesKHR);
+    GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceCapabilities2KHR);
 }
 
 static void demo_create_device(struct demo *demo) {
@@ -4911,8 +4914,49 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                          &demo->present_queue);
     }
 
+    VkSurfaceCapabilitiesKHR surfCapabilities;
+
+    const VkPhysicalDeviceSurfaceInfo2KHR surfaceinfo2 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        .pNext = NULL,
+        .surface = demo->surface,
+    };
+
+    VkHdrMetadataEXT nativeDisplayHdrMetadata;
+    memset(&nativeDisplayHdrMetadata, 0, sizeof(nativeDisplayHdrMetadata));
+    nativeDisplayHdrMetadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+    nativeDisplayHdrMetadata.pNext = NULL;
+
+    VkDisplayNativeHdrSurfaceCapabilitiesAMD nativeHdrCapabilitiesAMD = {
+        .sType = VK_STRUCTURE_TYPE_DISPLAY_NATIVE_HDR_SURFACE_CAPABILITIES_AMD,
+        .pNext = &nativeDisplayHdrMetadata,
+        .localDimmingSupport = VK_FALSE,
+    };
+
+    VkSurfaceCapabilities2KHR surfacecapabilities2 = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+        .pNext = &nativeHdrCapabilitiesAMD,
+        .surfaceCapabilities = surfCapabilities,
+    };
+
+    err = demo->fpGetPhysicalDeviceSurfaceCapabilities2KHR(demo->gpu, &surfaceinfo2,
+                                                           &surfacecapabilities2);
+    assert(!err);
+
+    printf("Display native HDR properties as queried from monitor:\n");
+    printf("Display Supports control of HDR local dimming: %s\n", nativeHdrCapabilitiesAMD.localDimmingSupport ? "Yes" : "No");
+    printf("Display Gamut  R: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryRed.x, nativeDisplayHdrMetadata.displayPrimaryRed.y);
+    printf("Display Gamut  G: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryGreen.x, nativeDisplayHdrMetadata.displayPrimaryGreen.y);
+    printf("Display Gamut  B: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryBlue.x, nativeDisplayHdrMetadata.displayPrimaryBlue.y);
+    printf("Display Gamut WP: [%f, %f]\n", nativeDisplayHdrMetadata.whitePoint.x, nativeDisplayHdrMetadata.whitePoint.y);
+    printf("Display minLuminance: %f nits\n", nativeDisplayHdrMetadata.minLuminance);
+    printf("Display maxLuminance: %f nits\n", nativeDisplayHdrMetadata.maxLuminance);
+    printf("Content maxFrameAverageLightLevel: %f nits\n", nativeDisplayHdrMetadata.maxFrameAverageLightLevel);
+    printf("Content maxContentLightLevel: %f nits\n", nativeDisplayHdrMetadata.maxContentLightLevel);
+
     // Get the list of VkFormat's that are supported:
     uint32_t formatCount;
+
     err = demo->fpGetPhysicalDeviceSurfaceFormatsKHR(demo->gpu, demo->surface,
                                                      &formatCount, NULL);
     assert(!err);
