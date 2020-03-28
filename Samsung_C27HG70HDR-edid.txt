@@ -15,6 +15,18 @@ Display x,y Chromaticity:
   Blue:  0.1523, 0.0615
   White: 0.3134, 0.3291
 
+Vulkan driver/gpu: AMD Radeon(TM) RX Vega 11 Graphics
+Display native HDR properties as queried from monitor on AMD Vulkan on Windows-10:
+Display Supports control of HDR local dimming: No
+Display Gamut  R: [0.676800, 0.316400]
+Display Gamut  G: [0.275400, 0.661100]
+Display Gamut  B: [0.152300, 0.061500]
+Display Gamut WP: [0.312500, 0.329100]
+Display minLuminance: 0.049100 nits
+Display maxLuminance: 351.000000 nits
+Content maxFrameAverageLightLevel: 0.000000 nits
+Content maxContentLightLevel: 0.000000 nits
+
 Display native HDR properties as queried from monitor from bug-fixed amdvlk:
 Display Supports control of HDR local dimming: No
 Display Gamut  R: [0.676700, 0.316400]
