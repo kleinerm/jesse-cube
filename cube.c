@@ -1294,6 +1294,7 @@ static void demo_draw(struct demo *demo) {
     // Assign HDR meta data for this frame:
     if (demo->hdr_enabled && firsttime) {
         VkHdrMetadataEXT hdr_metadata;
+        memset(&hdr_metadata, 0, sizeof(hdr_metadata));
 
         // Note: Chosen default values are the mastering display properties of
         // my Samsung CH27HG70 FreeSync2 HDR monitor.
@@ -1310,8 +1311,8 @@ static void demo_draw(struct demo *demo) {
         hdr_metadata.whitePoint = wp;
         hdr_metadata.maxLuminance = 603.666;
         hdr_metadata.minLuminance = 0.049;
-        hdr_metadata.maxContentLightLevel = 603.666;
-        hdr_metadata.maxFrameAverageLightLevel = 250;
+        hdr_metadata.maxContentLightLevel = 0; //603.666;
+        hdr_metadata.maxFrameAverageLightLevel = 0;
 
         double tElapsed = ((double) (tSwapComplete - tStartTime)) / 1e9;
         //hdr_metadata.displayPrimaryGreen.x = 0.5 + 0.5 * sin(2 * 3.141592654 * 0.05 * tElapsed);
