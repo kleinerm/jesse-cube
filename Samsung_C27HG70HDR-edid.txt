@@ -14,7 +14,31 @@ Display x,y Chromaticity:
   Green: 0.2753, 0.6611
   Blue:  0.1523, 0.0615
   White: 0.3134, 0.3291
-Established timings supported:
+
+Display native HDR properties as queried from monitor from bug-fixed amdvlk:
+Display Supports control of HDR local dimming: No
+Display Gamut  R: [0.676700, 0.316400]
+Display Gamut  G: [0.275300, 0.661100]
+Display Gamut  B: [0.152300, 0.061500]
+Display Gamut WP: [0.313400, 0.329100]
+Display minLuminance: 0.049000 nits
+Display maxLuminance: 603.000000 nits
+Content maxFrameAverageLightLevel: 351.000000 nits
+Content maxContentLightLevel: 0.000000 nits
+
+
+Display native HDR properties as queried from monitor from original amdvlk:
+Display Supports control of HDR local dimming: No
+Display Gamut  R: [0.676700, 0.316400]
+Display Gamut  G: [0.275300, 0.661100]
+Display Gamut  B: [0.153300, 0.058500]
+Display Gamut WP: [0.328100, 0.335900]
+Display minLuminance: 0.049000 nits
+Display maxLuminance: 603.000000 nits
+Content maxFrameAverageLightLevel: 351.000000 nits
+Content maxContentLightLevel: 0.000000 nits
+
+  Established timings supported:
   720x400@70Hz 9:5 HorFreq: 31469 Hz Clock: 28.320 MHz
   640x480@60Hz 4:3 HorFreq: 31469 Hz Clock: 25.175 MHz
   640x480@67Hz 4:3 HorFreq: 35000 Hz Clock: 30.240 MHz
