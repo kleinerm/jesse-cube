@@ -779,7 +779,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
         .pInheritanceInfo = NULL,
     };
     const VkClearValue clear_values[2] = {
-            [0] = {.color.float32 = {0.2f, 0.2f, 0.2f, 0.2f}},
+            [0] = {.color.float32 = {0.0f, 0.0f, 0.0f, 0.0f}},
             [1] = {.depthStencil = {1.0f, 0}},
     };
     const VkRenderPassBeginInfo rp_begin = {
@@ -2852,33 +2852,37 @@ void draw_opengl(struct demo* demo)
 
     // Clear to background color of changing color:
     glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
+    //glClearColor(0, 0, 0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
-    glColor3f(0.0, 1.0, 0.0);
 
-    // Draw some rotating square into the center, textured with a cat pic:
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-    glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
-    glScalef(0.5, 0.5, 1);
-    glEnable(GL_TEXTURE_2D);
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glBegin(GL_QUADS);
-    glTexCoord2f(0.0, 0.0);
-    glVertex2f(-1.0, -1.0);
-    glTexCoord2f(1.0, 0.0);
-    glVertex2f(1.0, -1.0);
-    glTexCoord2f(1.0, 1.0);
-    glVertex2f(1.0, 1.0);
-    glTexCoord2f(0.0, 1.0);
-    glVertex2f(-1.0, 1.0);
-    glEnd();
-    glDisable(GL_TEXTURE_2D);
+    if (true) {
+        glColor3f(0.0, 1.0, 0.0);
+
+        // Draw some rotating square into the center, textured with a cat pic:
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
+        glScalef(0.5, 0.5, 1);
+        glEnable(GL_TEXTURE_2D);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex2f(-1.0, -1.0);
+        glTexCoord2f(1.0, 0.0);
+        glVertex2f(1.0, -1.0);
+        glTexCoord2f(1.0, 1.0);
+        glVertex2f(1.0, 1.0);
+        glTexCoord2f(0.0, 1.0);
+        glVertex2f(-1.0, 1.0);
+        glEnd();
+        glDisable(GL_TEXTURE_2D);
+    }
 
     // Poor man's sync until we use semaphores properly:
     glFinish();
@@ -5266,7 +5270,7 @@ static void demo_init_connection(struct demo *demo) {
 }
 
 static void demo_init(struct demo *demo, int argc, char **argv) {
-    vec3 eye = {0.0f, 3.0f, 5.0f};
+    vec3 eye = {0.0f, 3.0f, 2.5f};
     vec3 origin = {0, 0, 0};
     vec3 up = {0.0f, 1.0f, 0.0};
 
@@ -5409,8 +5413,8 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
     demo_init_vk(demo);
 
-    demo->spin_angle = 4.0f;
-    demo->spin_increment = 0.2f;
+    demo->spin_angle = 0.0f;
+    demo->spin_increment = 0.01f;
     demo->pause = false;
 
     mat4x4_perspective(demo->projection_matrix, (float)degreesToRadians(45.0f),
