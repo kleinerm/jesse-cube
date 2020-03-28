@@ -4919,7 +4919,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                          &demo->present_queue);
     }
 
-    VkSurfaceCapabilitiesKHR surfCapabilities;
+    VkSurfaceCapabilitiesKHR surfCapabilities = { 0 };
 
     const VkPhysicalDeviceSurfaceInfo2KHR surfaceinfo2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
