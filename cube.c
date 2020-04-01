@@ -2869,6 +2869,9 @@ void draw_opengl(struct demo* demo)
     // Bind fbo with Vulkan texture for RTT:
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
 
+    glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
+    glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
+
     // Clear to background color of changing color:
     glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
     //glClearColor(0, 0, 0, 1.0);
@@ -2885,7 +2888,7 @@ void draw_opengl(struct demo* demo)
         glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
         glScalef(0.5, 0.5, 1);
         glEnable(GL_TEXTURE_2D);
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
