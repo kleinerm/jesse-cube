@@ -2879,13 +2879,17 @@ void draw_opengl(struct demo* demo)
     glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
     glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
 
+    // PQ 0.5 ~ 95 nits
+    // PQ 0.62186 ~ 300 nits
+    // PQ 0.666 ~ 455 nits
+    // PQ 0.69629 ~ 600 nits
     // Clear to background color of changing color:
-    glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
-    //glClearColor(0, 0, 0, 1.0);
+    //glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
+    glClearColor( 0.525, 0.62186, 0.62186, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (true) {
-        glColor3f(0.0, 1.0, 0.0);
+        glColor3f(0.69629, 0.69629, 0.69629);
 
         // Draw some rotating square into the center, textured with a cat pic:
         glMatrixMode(GL_PROJECTION);
@@ -2893,7 +2897,7 @@ void draw_opengl(struct demo* demo)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
-        glScalef(0.5, 0.5, 1);
+        glScalef(0.75, 0.75, 1);
         glEnable(GL_TEXTURE_2D);
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
