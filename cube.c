@@ -5055,20 +5055,21 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             }
         }
 
-        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-                continue;
-                printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
-                demo->format = surfFormats[i].surfaceFormat.format;
-                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
-                break;
+        if (demo->interop_tex_format >= 2) {
+            for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                    printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
+                    demo->format = surfFormats[i].surfaceFormat.format;
+                    demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
+                    demo->interop_tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                    break;
+                }
             }
         }
 
         /* // Not displayable on AMD Raven + Windows-10 at least!
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
             if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_UNORM) {
-                //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_UNORM\n", i);
                 demo->format = surfFormats[i].surfaceFormat.format;
                 demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
@@ -5077,23 +5078,25 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         }
         */
 
-        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
-                //continue;
-                printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
-                demo->format = surfFormats[i].surfaceFormat.format;
-                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
-                break;
+        if (demo->interop_tex_format >= 1) {
+            for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+                    printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
+                    demo->format = surfFormats[i].surfaceFormat.format;
+                    demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
+                    demo->interop_tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+                    break;
+                }
             }
-        }
 
-        for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
-                //continue;
-                printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
-                demo->format = surfFormats[i].surfaceFormat.format;
-                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
-                break;
+            for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+                    printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
+                    demo->format = surfFormats[i].surfaceFormat.format;
+                    demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
+                    demo->interop_tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+                    break;
+                }
             }
         }
 
@@ -5101,6 +5104,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             printf("Using default fallback swapchain format VK_FORMAT_B8G8R8A8_UNORM\n");
             demo->format = surfFormats[0].surfaceFormat.format;
             demo->color_space = surfFormats[0].surfaceFormat.colorSpace;
+            demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
         }
     }
 
@@ -5297,7 +5301,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     memset(demo, 0, sizeof(*demo));
     demo->presentMode = VK_PRESENT_MODE_FIFO_KHR;
     demo->frameCount = INT32_MAX;
-    demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    demo->interop_tex_format = 1; // 10 bit unorm ~ RGB10A2 by default.
     demo->waitMsecs = 0;
     demo->output_name[0] = 0;
     demo->gpuindex = 0;
@@ -5343,6 +5347,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
             sscanf(argv[i + 1], "%d", (int*) &demo->interop_tex_format) == 1) {
             i++;
 
+            /*
             switch (demo->interop_tex_format) {
                 case 0:
                     demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -5360,6 +5365,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
                     printf("Unsupported interop texture format!\n");
                     exit(1);
             }
+            */
 
             continue;
         }
