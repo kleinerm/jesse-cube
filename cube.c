@@ -437,6 +437,7 @@ struct demo {
     PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR fpGetPhysicalDeviceSurfaceCapabilitiesKHR;
     PFN_vkGetPhysicalDeviceSurfaceCapabilities2KHR fpGetPhysicalDeviceSurfaceCapabilities2KHR;
     PFN_vkGetPhysicalDeviceSurfaceFormatsKHR fpGetPhysicalDeviceSurfaceFormatsKHR;
+    PFN_vkGetPhysicalDeviceSurfaceFormats2KHR fpGetPhysicalDeviceSurfaceFormats2KHR;
     PFN_vkGetPhysicalDeviceSurfacePresentModesKHR fpGetPhysicalDeviceSurfacePresentModesKHR;
     PFN_vkCreateSwapchainKHR fpCreateSwapchainKHR;
     PFN_vkDestroySwapchainKHR fpDestroySwapchainKHR;
@@ -1296,7 +1297,7 @@ static void demo_draw(struct demo *demo) {
         VkHdrMetadataEXT hdr_metadata;
         memset(&hdr_metadata, 0, sizeof(hdr_metadata));
 
-        // Note: Chosen default values are the mastering display properties of
+        // Note: These are the mastering display properties of
         // my Samsung CH27HG70 FreeSync2 HDR monitor.
         VkXYColorEXT pr = { 0.6767, 0.3164 };
         VkXYColorEXT pg = { 0.2753, 0.6611 };
@@ -4688,6 +4689,7 @@ static void demo_init_vk(struct demo *demo) {
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceSupportKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceCapabilitiesKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceFormatsKHR);
+    GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceFormats2KHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfacePresentModesKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetSwapchainImagesKHR);
     GET_INSTANCE_PROC_ADDR(demo->inst, GetPhysicalDeviceSurfaceCapabilities2KHR);
@@ -4921,9 +4923,23 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     VkSurfaceCapabilitiesKHR surfCapabilities = { 0 };
 
+#if defined(WIN32)
+    VkSurfaceFullScreenExclusiveWin32InfoEXT fullscreen_exclusive_info_win32 = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT,
+        .pNext = NULL,
+        .hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
+    };
+
+    VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
+        .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
+        .pNext = &fullscreen_exclusive_info_win32,
+        .fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
+    };
+#endif
+
     const VkPhysicalDeviceSurfaceInfo2KHR surfaceinfo2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
-        .pNext = NULL,
+        .pNext = &fullscreen_exclusive_info,
         .surface = demo->surface,
     };
 
@@ -4962,20 +4978,24 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     // Get the list of VkFormat's that are supported:
     uint32_t formatCount;
 
-    err = demo->fpGetPhysicalDeviceSurfaceFormatsKHR(demo->gpu, demo->surface,
+    err = demo->fpGetPhysicalDeviceSurfaceFormats2KHR(demo->gpu, &surfaceinfo2,
                                                      &formatCount, NULL);
     assert(!err);
-    VkSurfaceFormatKHR *surfFormats =
-        (VkSurfaceFormatKHR *)malloc(formatCount * sizeof(VkSurfaceFormatKHR));
-    err = demo->fpGetPhysicalDeviceSurfaceFormatsKHR(demo->gpu, demo->surface,
+    VkSurfaceFormat2KHR *surfFormats = (VkSurfaceFormat2KHR*) malloc(formatCount * sizeof(VkSurfaceFormat2KHR));
+    for (int i = 0; i < formatCount; i++) {
+        surfFormats[i].sType = VK_STRUCTURE_TYPE_SURFACE_FORMAT_2_KHR;
+        surfFormats[i].pNext = NULL;
+    }
+
+    err = demo->fpGetPhysicalDeviceSurfaceFormats2KHR(demo->gpu, &surfaceinfo2,
                                                      &formatCount, surfFormats);
     assert(!err);
     // If the format list includes just one entry of VK_FORMAT_UNDEFINED,
     // the surface has no preferred format.  Otherwise, at least one
     // supported format will be returned.
-    if (formatCount == 1 && surfFormats[0].format == VK_FORMAT_UNDEFINED) {
+    if (formatCount == 1 && surfFormats[0].surfaceFormat.format == VK_FORMAT_UNDEFINED) {
         demo->format = VK_FORMAT_B8G8R8A8_UNORM;
-        demo->color_space = surfFormats[0].colorSpace;
+        demo->color_space = surfFormats[0].surfaceFormat.colorSpace;
     } else {
         int i;
 
@@ -4987,25 +5007,25 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         printf("Number of surface formats: %d\n", formatCount);
 
         for (i = 0; i < formatCount; i++) {
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT)
                 printf("[%i] For colorspace VK_COLOR_SPACE_DOLBYVISION_EXT    - ", i);
 
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
                 printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_ST2084_EXT   - ", i);
 
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT)
                 printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_HLG_EXT      - ", i);
 
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT)
                 printf("[%i] For colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT  - ", i);
 
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_DISPLAY_NATIVE_AMD)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DISPLAY_NATIVE_AMD)
                 printf("[%i] For colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD - ", i);
 
-            if (surfFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
                 printf("[%i] For colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR - ", i);
 
-            switch (surfFormats[i].format) {
+            switch (surfFormats[i].surfaceFormat.format) {
                 case VK_FORMAT_R16G16B16A16_SFLOAT:
                     printf("[%i] Swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                     break;
@@ -5031,56 +5051,56 @@ static void demo_init_vk_swapchain(struct demo *demo) {
                     break;
 
                 default:
-                    printf("[%i] Swapchain format unknown %d\n", i, surfFormats[i].format);
+                    printf("[%i] Swapchain format unknown %d\n", i, surfFormats[i].surfaceFormat.format);
             }
         }
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
                 continue;
                 printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
-                demo->format = surfFormats[i].format;
-                demo->color_space = surfFormats[i].colorSpace;
+                demo->format = surfFormats[i].surfaceFormat.format;
+                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                 break;
             }
         }
 
         /* // Not displayable on AMD Raven + Windows-10 at least!
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].format == VK_FORMAT_R16G16B16A16_UNORM) {
+            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_UNORM) {
                 //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_UNORM\n", i);
-                demo->format = surfFormats[i].format;
-                demo->color_space = surfFormats[i].colorSpace;
+                demo->format = surfFormats[i].surfaceFormat.format;
+                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                 break;
             }
         }
         */
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
+            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
                 //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
-                demo->format = surfFormats[i].format;
-                demo->color_space = surfFormats[i].colorSpace;
+                demo->format = surfFormats[i].surfaceFormat.format;
+                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                 break;
             }
         }
 
         for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-            if (surfFormats[i].format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
+            if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
                 //continue;
                 printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
-                demo->format = surfFormats[i].format;
-                demo->color_space = surfFormats[i].colorSpace;
+                demo->format = surfFormats[i].surfaceFormat.format;
+                demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                 break;
             }
         }
 
         if (demo->format == VK_FORMAT_UNDEFINED) {
             printf("Using default fallback swapchain format VK_FORMAT_B8G8R8A8_UNORM\n");
-            demo->format = surfFormats[0].format;
-            demo->color_space = surfFormats[0].colorSpace;
+            demo->format = surfFormats[0].surfaceFormat.format;
+            demo->color_space = surfFormats[0].surfaceFormat.colorSpace;
         }
     }
 
