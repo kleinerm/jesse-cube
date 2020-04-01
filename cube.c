@@ -460,7 +460,9 @@ struct demo {
 
     // MK HDR stuff:
     VkBool32 hdr_enabled;
+    VkBool32 local_dimming_enabled;
     PFN_vkSetHdrMetadataEXT fpSetHdrMetadataEXT;
+    PFN_vkSetLocalDimmingAMD fpSetLocalDimmingAMD;
 
     // MK Stuff on the OpenGL side:
     GLuint glReady;
@@ -1666,6 +1668,11 @@ static void demo_prepare_buffers(struct demo *demo) {
             break;
     }
 #endif
+
+    if (demo->hdr_enabled) {
+        if (demo->fpSetLocalDimmingAMD)
+            demo->fpSetLocalDimmingAMD(demo->device, demo->swapchain, demo->local_dimming_enabled);
+    }
 }
 
 static void demo_prepare_depth(struct demo *demo) {
@@ -4893,10 +4900,13 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     GET_DEVICE_PROC_ADDR(demo->device, GetMemoryFdKHR);
 #endif
 
-    if (demo->hdr_enabled)
+    if (demo->hdr_enabled) {
         GET_DEVICE_PROC_ADDR(demo->device, SetHdrMetadataEXT);
+        GET_DEVICE_PROC_ADDR(demo->device, SetLocalDimmingAMD);
+    }
 
     printf("fpSetHdrMetadataEXT = %p\n", demo->fpSetHdrMetadataEXT);
+    printf("fpSetLocalDimmingAMD = %p\n", demo->fpSetLocalDimmingAMD);
 
     /*
     GET_DEVICE_PROC_ADDR(demo->device, );
@@ -5329,10 +5339,16 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
     demo->hdr_enabled = true;
+    demo->local_dimming_enabled = false;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-hdr") == 0) {
             demo->hdr_enabled = false;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--localdimming") == 0) {
+            demo->local_dimming_enabled = true;
             continue;
         }
 
@@ -5439,7 +5455,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr] [--localdimming]\n"
                         "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>]\n"
                         "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
