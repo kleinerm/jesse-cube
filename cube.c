@@ -1304,6 +1304,24 @@ static void demo_draw(struct demo *demo) {
         VkXYColorEXT pb = { 0.1523, 0.0615 };
         VkXYColorEXT wp = { 0.3134, 0.3291 };
 
+        // BT 2020 color space selected as output color space?
+        if (demo->color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+            demo->color_space == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+            demo->color_space == VK_COLOR_SPACE_BT2020_LINEAR_EXT) {
+            printf("HDR metadata for BT2020 colorspace assigned.\n");
+            // Override to its gamut:
+            pr.x = 0.708;
+            pr.y = 0.292;
+            pg.x = 0.170;
+            pg.y = 0.797;
+            pb.x = 0.131;
+            pb.y = 0.046;
+
+            // D65 white point:
+            wp.x = 0.3127;
+            wp.y = 0.3290;
+        }
+
         hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
         hdr_metadata.pNext = NULL;
         hdr_metadata.displayPrimaryRed = pr;
