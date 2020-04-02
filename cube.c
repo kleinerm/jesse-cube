@@ -5152,6 +5152,7 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     if (demo->hdr_enabled) {
         printf("Trying to enable HDR mode...\n");
+        demo->interop_tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
         // Note: For all but VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, the application must apply the
         // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
