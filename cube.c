@@ -461,6 +461,7 @@ struct demo {
     // MK HDR stuff:
     VkBool32 hdr_enabled;
     VkBool32 local_dimming_enabled;
+    VkBool32 amddisplaynativehdrExtFound;
     PFN_vkSetHdrMetadataEXT fpSetHdrMetadataEXT;
     PFN_vkSetLocalDimmingAMD fpSetLocalDimmingAMD;
 
@@ -4436,10 +4437,11 @@ static void demo_init_vk(struct demo *demo) {
     VkBool32 externalSemaphoreExtFound = 0;
     VkBool32 externalMemoryFdExtFound = 0;
     VkBool32 externalSemaphoreFdExtFound = 0;
-    VkBool32 amddisplaynativehdrExtFound = 0;
     VkBool32 fullscreenexclusiveExtFound = 0;
     VkBool32 externalMemoryWin32ExtFound = 0;
     VkBool32 externalSemaphoreWin32ExtFound = 0;
+    demo->amddisplaynativehdrExtFound = 0;
+
 /*
     VkBool32  = 0;
     VkBool32  = 0;
@@ -4498,7 +4500,7 @@ static void demo_init_vk(struct demo *demo) {
 
             if (!strcmp(VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION_NAME,
                 device_extensions[i].extensionName)) {
-                amddisplaynativehdrExtFound = 1;
+                demo->amddisplaynativehdrExtFound = 1;
                 printf("found VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION\n");
                 demo->extension_names[demo->enabled_extension_count++] = VK_AMD_DISPLAY_NATIVE_HDR_EXTENSION_NAME;
             }
@@ -4906,7 +4908,8 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     if (demo->hdr_enabled) {
         GET_DEVICE_PROC_ADDR(demo->device, SetHdrMetadataEXT);
-        GET_DEVICE_PROC_ADDR(demo->device, SetLocalDimmingAMD);
+        if (demo->amddisplaynativehdrExtFound)
+            GET_DEVICE_PROC_ADDR(demo->device, SetLocalDimmingAMD);
     }
 
     printf("fpSetHdrMetadataEXT = %p\n", demo->fpSetHdrMetadataEXT);
@@ -4974,7 +4977,11 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     const VkPhysicalDeviceSurfaceInfo2KHR surfaceinfo2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR,
+        #if defined(WIN32)
         .pNext = &fullscreen_exclusive_info,
+        #else
+        .pNext = NULL,
+        #endif
         .surface = demo->surface,
     };
 
