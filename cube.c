@@ -783,6 +783,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
         .pInheritanceInfo = NULL,
     };
     const VkClearValue clear_values[2] = {
+            //[0] = {.color.float32 = {0.05f, 0.05f, 0.05f, 0.0f}},
             [0] = {.color.float32 = {0.0f, 0.0f, 0.0f, 0.0f}},
             [1] = {.depthStencil = {1.0f, 0}},
     };
@@ -2886,11 +2887,12 @@ void draw_opengl(struct demo* demo)
     // PQ 0.69629 ~ 600 nits
     // Clear to background color of changing color:
     //glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
-    glClearColor( 0.525, 0.62186, 0.62186, 1.0);
+    //glClearColor( 0.2, 0.62186, 0.62186, 1.0);
+    glClearColor( 200.0, 0.01, 0.01, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (true) {
-        glColor3f(0.69629, 0.69629, 0.69629);
+        glColor3f(0.0, 600.0, 0.012);
 
         // Draw some rotating square into the center, textured with a cat pic:
         glMatrixMode(GL_PROJECTION);
@@ -2898,8 +2900,8 @@ void draw_opengl(struct demo* demo)
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
-        glScalef(0.75, 0.75, 1);
-        glEnable(GL_TEXTURE_2D);
+        glScalef(0.15, 0.15, 1);
+        //glEnable(GL_TEXTURE_2D);
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
