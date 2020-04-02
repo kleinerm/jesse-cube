@@ -1300,6 +1300,9 @@ static void demo_draw(struct demo *demo) {
         VkHdrMetadataEXT hdr_metadata;
         memset(&hdr_metadata, 0, sizeof(hdr_metadata));
 
+        hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+        hdr_metadata.pNext = NULL;
+
         // Note: These are the mastering display properties of
         // my Samsung CH27HG70 FreeSync2 HDR monitor.
         VkXYColorEXT pr = { 0.6767, 0.3164 };
@@ -1325,19 +1328,16 @@ static void demo_draw(struct demo *demo) {
             wp.y = 0.3290;
         }
 
-        hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
-        hdr_metadata.pNext = NULL;
-        hdr_metadata.displayPrimaryRed = pr;
-        hdr_metadata.displayPrimaryGreen = pg;
-        hdr_metadata.displayPrimaryBlue = pb;
-        hdr_metadata.whitePoint = wp;
-        hdr_metadata.maxLuminance = 603.666;
-        hdr_metadata.minLuminance = 0.049;
-        hdr_metadata.maxContentLightLevel = 0; //603.666;
-        hdr_metadata.maxFrameAverageLightLevel = 0;
-
-        double tElapsed = ((double) (tSwapComplete - tStartTime)) / 1e9;
-        //hdr_metadata.displayPrimaryGreen.x = 0.5 + 0.5 * sin(2 * 3.141592654 * 0.05 * tElapsed);
+        if (true) {
+            hdr_metadata.displayPrimaryRed = pr;
+            hdr_metadata.displayPrimaryGreen = pg;
+            hdr_metadata.displayPrimaryBlue = pb;
+            hdr_metadata.whitePoint = wp;
+            hdr_metadata.maxLuminance = 603.666;
+            hdr_metadata.minLuminance = 0.0;
+            hdr_metadata.maxContentLightLevel = 0; //603.666;
+            hdr_metadata.maxFrameAverageLightLevel = 0;
+        }
 
         firsttime = false;
         printf("Set HDR DATA\n");
