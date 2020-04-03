@@ -2888,11 +2888,11 @@ void draw_opengl(struct demo* demo)
     // Clear to background color of changing color:
     //glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
     //glClearColor( 0.2, 0.62186, 0.62186, 1.0);
-    glClearColor( 200.0, 0.01, 0.01, 1.0);
+    glClearColor( 575.0, 575.0, 575.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (true) {
-        glColor3f(0.0, 600.0, 0.012);
+        glColor3f(600.0, 600.0, 600.0);
 
         // Draw some rotating square into the center, textured with a cat pic:
         glMatrixMode(GL_PROJECTION);
