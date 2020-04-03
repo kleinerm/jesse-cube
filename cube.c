@@ -3676,30 +3676,31 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     VkExtent2D image_extent;
     VkDisplaySurfaceCreateInfoKHR create_info;
 
-    // Get the first display
-    err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, NULL);
-    assert(!err);
+    // Do we already have an output leased from X11?
+    if (!demo->vkdisplay) {
+        // Nope. Maybe running directly on VT without X-Server? Try to get a
+        // direct DRM/KMS display, ie. become DRM-Master:
+        printf("Apparently running directly on Linux DRM framebuffer in a VT.\n");
 
-    if (display_count == 0) {
-        printf("Cannot find any display!\n");
-        fflush(stdout);
-        exit(1);
+        // Enumerate available displays:
+        err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, NULL);
+        assert(!err);
+
+        if (display_count == 0) {
+            printf("Cannot find any display!\n");
+            fflush(stdout);
+            exit(1);
+        }
+
+        display_props = calloc(display_count, sizeof (VkDisplayPropertiesKHR));
+        err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, display_props);
+        assert(!err || (err == VK_INCOMPLETE));
+
+        // Get last display:
+        demo->vkdisplay = display_props[display_count-1].display;
     }
 
-    display_props = calloc(display_count, sizeof (VkDisplayPropertiesKHR));
-    err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, display_props);
-    assert(!err || (err == VK_INCOMPLETE));
-
-    display = display_props[display_count-1].display;
-    demo->vkdisplay = display;
-
-    // 2nd try to lease the DRM display if needed. Will no-op if not running
-    // on X or already leased:
-    if (!get_x_lease(demo, display)) {
-        printf("Could not get X-Lease for output in pass II. Game over!\n");
-        fflush(stdout);
-        exit(1);
-    }
+    display = demo->vkdisplay;
 
     // Get the first mode of the display
     err = vkGetDisplayModePropertiesKHR(demo->gpu, display, &mode_count, NULL);
@@ -3816,7 +3817,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
 
 #endif
 
-#if 0
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
 static void demo_run_display(struct demo *demo)
 {
     while (!demo->quit) {
@@ -4018,6 +4019,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 
     printf("Successfully leased %p !\n", khr_display);
     demo->leasedAlready = true;
+    demo->vkdisplay = khr_display;
 
     return true;
 }
@@ -4423,10 +4425,11 @@ static void demo_init_vk(struct demo *demo) {
                  "vkGetPhysicalDeviceDisplayPropertiesKHR Failure");
 
         for (uint32_t i = 0; i < display_property_count; i++) {
-            printf("name %s %dx%d pixels\n",
-               display_properties[i].displayName,
-               display_properties[i].physicalResolution.width,
-               display_properties[i].physicalResolution.height);
+            printf("%p: name %s %dx%d pixels\n",
+                display_properties[i].display,
+                display_properties[i].displayName,
+                display_properties[i].physicalResolution.width,
+                display_properties[i].physicalResolution.height);
         }
     }
 
@@ -5178,6 +5181,11 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         // even standard sRGB, iff FreeSync2 HDR is disabled, but not otherwise - see above.
     }
 
+    if (!demo->interop_enabled) {
+        printf("Override: OpenGL disabled - using RGBA8 texture format for static cat texture...\n");
+        demo->interop_tex_format = VK_FORMAT_R8G8B8A8_UNORM;
+    }
+
     switch (demo->color_space) {
         case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
             printf("Using colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR\n");
@@ -5490,7 +5498,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
     demo_init_vk(demo);
 
-    demo->spin_angle = 0.0f;
+    demo->spin_angle = 1.0f;
     demo->spin_increment = 0.01f;
     demo->pause = false;
 
@@ -5766,10 +5774,15 @@ int main(int argc, char **argv) {
 
 // MK:
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-//    demo_create_glx_opengl1(&demo);
-//    demo_create_xcb_window(&demo);
-    demo_create_glx_opengl2(&demo);
+    if (demo.display) {
+        demo_create_glx_opengl2(&demo);
+    }
+    else {
+        // No X-Server, ergo no GLX based OpenGL, ergo no OpenGL interop testing.
+        demo.interop_enabled = false;
+    }
 #endif
+
     demo_init_vk_swapchain(&demo);
 
     demo_prepare(&demo);
@@ -5786,8 +5799,10 @@ int main(int argc, char **argv) {
     demo_run(&demo);
 #elif defined(VK_USE_PLATFORM_MIR_KHR)
 #elif defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    demo_run_xcb(&demo);
-// MK    demo_run_display(&demo);
+    if (demo.display)
+        demo_run_xcb(&demo);
+    else
+        demo_run_display(&demo);
 #endif
 
     demo_cleanup(&demo);
