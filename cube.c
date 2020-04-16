@@ -462,6 +462,7 @@ struct demo {
     VkBool32 hdr_enabled;
     VkBool32 local_dimming_enabled;
     VkBool32 amddisplaynativehdrExtFound;
+    VkHdrMetadataEXT nativeDisplayHdrMetadata;
     PFN_vkSetHdrMetadataEXT fpSetHdrMetadataEXT;
     PFN_vkSetLocalDimmingAMD fpSetLocalDimmingAMD;
 
@@ -1073,6 +1074,91 @@ void DemoUpdateTargetIPD(struct demo *demo) {
     }
 }
 
+void setHdrMetadata(struct demo *demo, float maxL, float avgL) {
+    VkHdrMetadataEXT hdr_metadata;
+    memset(&hdr_metadata, 0, sizeof(hdr_metadata));
+
+    hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+    hdr_metadata.pNext = NULL;
+
+    // Note: These are the mastering display properties of
+    // my Samsung CH27HG70 FreeSync2 HDR monitor.
+    VkXYColorEXT pr = { 0.6767, 0.3164 };
+    VkXYColorEXT pg = { 0.2753, 0.6611 };
+    VkXYColorEXT pb = { 0.1523, 0.0615 };
+    VkXYColorEXT wp = { 0.3134, 0.3291 };
+
+    // BT 2020 color space selected as output color space?
+    if (false &&
+        (demo->color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
+        demo->color_space == VK_COLOR_SPACE_HDR10_HLG_EXT ||
+        demo->color_space == VK_COLOR_SPACE_BT2020_LINEAR_EXT)) {
+        printf("HDR metadata for BT2020 colorspace assigned.\n");
+        // Override to its gamut:
+        pr.x = 0.708;
+        pr.y = 0.292;
+        pg.x = 0.170;
+        pg.y = 0.797;
+        pb.x = 0.131;
+        pb.y = 0.046;
+
+        // D65 white point:
+        wp.x = 0.3127;
+        wp.y = 0.3290;
+    }
+
+    if (true) {
+        // Use  display native color gamut and properties:
+        printf("HDR metadata for display native gamut and luminance levels assigned.\n");
+        memcpy(&hdr_metadata, &demo->nativeDisplayHdrMetadata, sizeof(hdr_metadata));
+
+        // Hack for AMD Vulkan driver on Windows-10: Does set bogus/wrong maxLuminance,
+        // specifically it wrongly sets maxLuminance = maxFrameAverageLightLevel, and
+        // maxFrameAverageLightLevel == 0. If we detect this, override with known values
+        // from Samsung CH27HG70 for the moment:
+        if (hdr_metadata.maxLuminance < 400) {
+            printf("Driver bug: maxLuminance wrong -- Setting to hard-coded 603.666 nits.\n");
+            hdr_metadata.maxLuminance = 603.666;
+        }
+
+        // If maxCLL is undefined, set it to max mastering display luminance:
+        if (hdr_metadata.maxContentLightLevel == 0)
+            hdr_metadata.maxContentLightLevel = hdr_metadata.maxLuminance;
+
+        // If maxFall is missing, set it to half maxCLL as a reasonable setting:
+        if (hdr_metadata.maxFrameAverageLightLevel == 0) {
+            printf("Driver bug? maxFrameAverageLightLevel missing -- Setting to half maxContentLightLevel.\n");
+            hdr_metadata.maxFrameAverageLightLevel = hdr_metadata.maxContentLightLevel / 2;
+        }
+    }
+
+    // Use maxL for maximum light levels, if provided:
+    if (maxL > 0) {
+        hdr_metadata.maxLuminance = maxL;
+        hdr_metadata.maxContentLightLevel = maxL;
+    }
+
+    // Use avgL for maxFALL, if provided:
+    if (avgL > 0) {
+        hdr_metadata.maxFrameAverageLightLevel = avgL;
+    }
+
+    // Minimum luminance is zero:
+    hdr_metadata.minLuminance = 0.0;
+
+    printf("Set HDR DATA to:\n");
+    printf("Display Gamut  R: [%f, %f]\n", hdr_metadata.displayPrimaryRed.x, hdr_metadata.displayPrimaryRed.y);
+    printf("Display Gamut  G: [%f, %f]\n", hdr_metadata.displayPrimaryGreen.x, hdr_metadata.displayPrimaryGreen.y);
+    printf("Display Gamut  B: [%f, %f]\n", hdr_metadata.displayPrimaryBlue.x, hdr_metadata.displayPrimaryBlue.y);
+    printf("Display Gamut WP: [%f, %f]\n", hdr_metadata.whitePoint.x, hdr_metadata.whitePoint.y);
+    printf("Display minLuminance: %f nits\n", hdr_metadata.minLuminance);
+    printf("Display maxLuminance: %f nits\n", hdr_metadata.maxLuminance);
+    printf("Content maxFrameAverageLightLevel: %f nits\n", hdr_metadata.maxFrameAverageLightLevel);
+    printf("Content maxContentLightLevel: %f nits\n", hdr_metadata.maxContentLightLevel);
+
+    demo->fpSetHdrMetadataEXT(demo->device, 1, &demo->swapchain, &hdr_metadata);
+}
+
 // Forward define:
 void draw_opengl(struct demo *demo);
 
@@ -1298,51 +1384,8 @@ static void demo_draw(struct demo *demo) {
 
     // Assign HDR meta data for this frame:
     if (demo->hdr_enabled && firsttime) {
-        VkHdrMetadataEXT hdr_metadata;
-        memset(&hdr_metadata, 0, sizeof(hdr_metadata));
-
-        hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
-        hdr_metadata.pNext = NULL;
-
-        // Note: These are the mastering display properties of
-        // my Samsung CH27HG70 FreeSync2 HDR monitor.
-        VkXYColorEXT pr = { 0.6767, 0.3164 };
-        VkXYColorEXT pg = { 0.2753, 0.6611 };
-        VkXYColorEXT pb = { 0.1523, 0.0615 };
-        VkXYColorEXT wp = { 0.3134, 0.3291 };
-
-        // BT 2020 color space selected as output color space?
-        if (demo->color_space == VK_COLOR_SPACE_HDR10_ST2084_EXT ||
-            demo->color_space == VK_COLOR_SPACE_HDR10_HLG_EXT ||
-            demo->color_space == VK_COLOR_SPACE_BT2020_LINEAR_EXT) {
-            printf("HDR metadata for BT2020 colorspace assigned.\n");
-            // Override to its gamut:
-            pr.x = 0.708;
-            pr.y = 0.292;
-            pg.x = 0.170;
-            pg.y = 0.797;
-            pb.x = 0.131;
-            pb.y = 0.046;
-
-            // D65 white point:
-            wp.x = 0.3127;
-            wp.y = 0.3290;
-        }
-
-        if (true) {
-            hdr_metadata.displayPrimaryRed = pr;
-            hdr_metadata.displayPrimaryGreen = pg;
-            hdr_metadata.displayPrimaryBlue = pb;
-            hdr_metadata.whitePoint = wp;
-            hdr_metadata.maxLuminance = 603.666;
-            hdr_metadata.minLuminance = 0.0;
-            hdr_metadata.maxContentLightLevel = 0; //603.666;
-            hdr_metadata.maxFrameAverageLightLevel = 0;
-        }
-
         firsttime = false;
-        printf("Set HDR DATA\n");
-        demo->fpSetHdrMetadataEXT(demo->device, 1, &demo->swapchain, &hdr_metadata);
+        setHdrMetadata(demo, 600.0, 250.0);
     }
 
 #ifndef WIN32
@@ -2888,7 +2931,7 @@ void draw_opengl(struct demo* demo)
     // Clear to background color of changing color:
     //glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
     //glClearColor( 0.2, 0.62186, 0.62186, 1.0);
-    glClearColor( 575.0, 575.0, 575.0, 1.0);
+    glClearColor( 351.0, 351.0, 351.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
     if (true) {
@@ -4990,14 +5033,13 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         .surface = demo->surface,
     };
 
-    VkHdrMetadataEXT nativeDisplayHdrMetadata;
-    memset(&nativeDisplayHdrMetadata, 0, sizeof(nativeDisplayHdrMetadata));
-    nativeDisplayHdrMetadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
-    nativeDisplayHdrMetadata.pNext = NULL;
+    memset(&demo->nativeDisplayHdrMetadata, 0, sizeof(demo->nativeDisplayHdrMetadata));
+    demo->nativeDisplayHdrMetadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
+    demo->nativeDisplayHdrMetadata.pNext = NULL;
 
     VkDisplayNativeHdrSurfaceCapabilitiesAMD nativeHdrCapabilitiesAMD = {
         .sType = VK_STRUCTURE_TYPE_DISPLAY_NATIVE_HDR_SURFACE_CAPABILITIES_AMD,
-        .pNext = &nativeDisplayHdrMetadata,
+        .pNext = &demo->nativeDisplayHdrMetadata,
         .localDimmingSupport = VK_FALSE,
     };
 
@@ -5013,14 +5055,14 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     printf("Display native HDR properties as queried from monitor:\n");
     printf("Display Supports control of HDR local dimming: %s\n", nativeHdrCapabilitiesAMD.localDimmingSupport ? "Yes" : "No");
-    printf("Display Gamut  R: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryRed.x, nativeDisplayHdrMetadata.displayPrimaryRed.y);
-    printf("Display Gamut  G: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryGreen.x, nativeDisplayHdrMetadata.displayPrimaryGreen.y);
-    printf("Display Gamut  B: [%f, %f]\n", nativeDisplayHdrMetadata.displayPrimaryBlue.x, nativeDisplayHdrMetadata.displayPrimaryBlue.y);
-    printf("Display Gamut WP: [%f, %f]\n", nativeDisplayHdrMetadata.whitePoint.x, nativeDisplayHdrMetadata.whitePoint.y);
-    printf("Display minLuminance: %f nits\n", nativeDisplayHdrMetadata.minLuminance);
-    printf("Display maxLuminance: %f nits\n", nativeDisplayHdrMetadata.maxLuminance);
-    printf("Content maxFrameAverageLightLevel: %f nits\n", nativeDisplayHdrMetadata.maxFrameAverageLightLevel);
-    printf("Content maxContentLightLevel: %f nits\n", nativeDisplayHdrMetadata.maxContentLightLevel);
+    printf("Display Gamut  R: [%f, %f]\n", demo->nativeDisplayHdrMetadata.displayPrimaryRed.x, demo->nativeDisplayHdrMetadata.displayPrimaryRed.y);
+    printf("Display Gamut  G: [%f, %f]\n", demo->nativeDisplayHdrMetadata.displayPrimaryGreen.x, demo->nativeDisplayHdrMetadata.displayPrimaryGreen.y);
+    printf("Display Gamut  B: [%f, %f]\n", demo->nativeDisplayHdrMetadata.displayPrimaryBlue.x, demo->nativeDisplayHdrMetadata.displayPrimaryBlue.y);
+    printf("Display Gamut WP: [%f, %f]\n", demo->nativeDisplayHdrMetadata.whitePoint.x, demo->nativeDisplayHdrMetadata.whitePoint.y);
+    printf("Display minLuminance: %f nits\n", demo->nativeDisplayHdrMetadata.minLuminance);
+    printf("Display maxLuminance: %f nits\n", demo->nativeDisplayHdrMetadata.maxLuminance);
+    printf("Content maxFrameAverageLightLevel: %f nits\n", demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel);
+    printf("Content maxContentLightLevel: %f nits\n", demo->nativeDisplayHdrMetadata.maxContentLightLevel);
 
     // Get the list of VkFormat's that are supported:
     uint32_t formatCount;
