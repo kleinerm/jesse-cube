@@ -214,6 +214,13 @@ struct vktexcube_vs_uniform {
 //--------------------------------------------------------------------------------------
 // clang-format off
 static const float g_vertex_buffer_data[] = {
+    -1.0f, 1.0f, 0.0f,  // +Z side
+    -1.0f,-1.0f, 0.0f,
+     1.0f, 1.0f, 0.0f,
+    -1.0f,-1.0f, 0.0f,
+     1.0f,-1.0f, 0.0f,
+     1.0f, 1.0f, 0.0f,
+
     -1.0f,-1.0f,-1.0f,  // -X side
     -1.0f,-1.0f, 1.0f,
     -1.0f, 1.0f, 1.0f,
@@ -248,16 +255,16 @@ static const float g_vertex_buffer_data[] = {
      1.0f,-1.0f, 1.0f,
      1.0f,-1.0f,-1.0f,
      1.0f, 1.0f,-1.0f,
-
-    -1.0f, 1.0f, 1.0f,  // +Z side
-    -1.0f,-1.0f, 1.0f,
-     1.0f, 1.0f, 1.0f,
-    -1.0f,-1.0f, 1.0f,
-     1.0f,-1.0f, 1.0f,
-     1.0f, 1.0f, 1.0f,
 };
 
 static const float g_uv_buffer_data[] = {
+    0.0f, 0.0f,  // +Z side
+    0.0f, 1.0f,
+    1.0f, 0.0f,
+    0.0f, 1.0f,
+    1.0f, 1.0f,
+    1.0f, 0.0f,
+
     0.0f, 1.0f,  // -X side
     1.0f, 1.0f,
     1.0f, 0.0f,
@@ -289,13 +296,6 @@ static const float g_uv_buffer_data[] = {
     1.0f, 0.0f,  // +X side
     0.0f, 0.0f,
     0.0f, 1.0f,
-    0.0f, 1.0f,
-    1.0f, 1.0f,
-    1.0f, 0.0f,
-
-    0.0f, 0.0f,  // +Z side
-    0.0f, 1.0f,
-    1.0f, 0.0f,
     0.0f, 1.0f,
     1.0f, 1.0f,
     1.0f, 0.0f,
@@ -825,7 +825,7 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
     scissor.offset.x = 0;
     scissor.offset.y = 0;
     vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
-    vkCmdDraw(cmd_buf, 12 * 3, 1, 0, 0);
+    vkCmdDraw(cmd_buf, 2 * 3, 1, 0, 0);
     // Note that ending the renderpass changes the image's layout from
     // COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
     vkCmdEndRenderPass(cmd_buf);
@@ -899,25 +899,28 @@ void demo_update_data_buffer(struct demo *demo) {
 
     mat4x4_mul(VP, demo->projection_matrix, demo->view_matrix);
 
+/*
     // Rotate around the Y axis
     mat4x4_dup(Model, demo->model_matrix);
 
     spin_angle = demo->spin_angle;
 
-    /* Make the cube spin at a constant rate */
+    // Make the cube spin at a constant rate
     if (demo->VK_GOOGLE_display_timing_enabled)
         spin_angle *= (float) demo->target_IPD / (1.0f / 30.0f * 1e9);
 
     mat4x4_rotate(demo->model_matrix, Model, 0.0f, 1.0f, 0.0f,
                   (float)degreesToRadians(spin_angle));
     mat4x4_mul(MVP, VP, demo->model_matrix);
+*/
 
     err = vkMapMemory(demo->device,
                       demo->swapchain_image_resources[demo->current_buffer].uniform_memory, 0,
                       VK_WHOLE_SIZE, 0, (void **)&pData);
     assert(!err);
 
-    memcpy(pData, (const void *)&MVP[0][0], matrixSize);
+    //memcpy(pData, (const void *)&MVP[0][0], matrixSize);
+    memcpy(pData, (const void *)&VP[0][0], matrixSize);
 
     vkUnmapMemory(demo->device, demo->swapchain_image_resources[demo->current_buffer].uniform_memory);
 }
@@ -1385,7 +1388,7 @@ static void demo_draw(struct demo *demo) {
     // Assign HDR meta data for this frame:
     if (demo->hdr_enabled && firsttime) {
         firsttime = false;
-        setHdrMetadata(demo, 600.0, 250.0);
+        setHdrMetadata(demo, 600.0, 351.0);
     }
 
 #ifndef WIN32
@@ -1886,8 +1889,18 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
     VkResult U_ASSERT_ONLY err;
     bool U_ASSERT_ONLY pass;
 
-    if (!loadTexture(filename, NULL, NULL, &tex_width, &tex_height)) {
-        ERR_EXIT("Failed to load textures", "Load Texture Failure");
+    // No OpenGL interop?
+    if (required_props & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        // Get needed texture size for image:
+        if (!loadTexture(filename, NULL, NULL, &tex_width, &tex_height)) {
+            ERR_EXIT("Failed to load textures", "Load Texture Failure");
+        }
+    }
+    else {
+        // OpenGL interop: Allocate interop texture the size of the true
+        // framebuffer:
+        tex_width = demo->width;
+        tex_height = demo->height;
     }
 
     tex_obj->tex_width = tex_width;
@@ -2166,7 +2179,7 @@ void demo_prepare_cube_data_buffers(struct demo *demo) {
     memcpy(data.mvp, MVP, sizeof(MVP));
     //    dumpMatrix("MVP", MVP);
 
-    for (unsigned int i = 0; i < 12 * 3; i++) {
+    for (unsigned int i = 0; i < 2 * 3; i++) {
         data.position[i][0] = g_vertex_buffer_data[i * 3];
         data.position[i][1] = g_vertex_buffer_data[i * 3 + 1];
         data.position[i][2] = g_vertex_buffer_data[i * 3 + 2];
@@ -2944,7 +2957,7 @@ void draw_opengl(struct demo* demo)
         glLoadIdentity();
         glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
         glScalef(0.15, 0.15, 1);
-        //glEnable(GL_TEXTURE_2D);
+        glEnable(GL_TEXTURE_2D);
         glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -3092,15 +3105,21 @@ static void demo_create_opengl_interop(struct demo* demo)
     // default binding 0 -- Yes, old school like it's 1992!
     {
         VkSubresourceLayout layout;
-        uint8_t* data = calloc(demo->textures[0].tex_width * demo->textures[0].tex_height * 4, sizeof(uint8_t));
+        uint8_t* data;
         int32_t width, height;
         const char* filename = tex_files[0];
         layout.rowPitch = 1024;
 
-        if (!loadTexture(filename, data, &layout, &width, &height)) {
-            fprintf(stderr, "Error loading texture: %s\n", filename);
+        if (!loadTexture(filename, NULL, NULL, &width, &height)) {
+            fprintf(stderr, "Error probe-loading texture: %s\n", filename);
         }
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, demo->textures[0].tex_width, demo->textures[0].tex_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+        data = calloc(width * height * 4, sizeof(uint8_t));
+
+        if (!loadTexture(filename, data, &layout, &width, &height)) {
+            fprintf(stderr, "Error real-loading texture: %s\n", filename);
+        }
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
         free(data);
     }
 
@@ -5544,9 +5563,11 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->spin_increment = 0.01f;
     demo->pause = false;
 
-    mat4x4_perspective(demo->projection_matrix, (float)degreesToRadians(45.0f),
-                       1.0f, 0.1f, 100.0f);
-    mat4x4_look_at(demo->view_matrix, eye, origin, up);
+    //mat4x4_perspective(demo->projection_matrix, (float)degreesToRadians(45.0f), 1.0f, 0.1f, 100.0f);
+    mat4x4_ortho(demo->projection_matrix, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
+
+    //mat4x4_look_at(demo->view_matrix, eye, origin, up);
+    mat4x4_identity(demo->view_matrix);
     mat4x4_identity(demo->model_matrix);
 
     demo->projection_matrix[1][1]*=-1;  //Flip projection matrix from GL to Vulkan orientation.
