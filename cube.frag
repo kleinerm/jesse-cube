@@ -25,7 +25,14 @@ layout (binding = 1) uniform sampler2D tex;
 
 layout (location = 0) in vec4 texcoord;
 layout (location = 0) out vec4 uFragColor;
+
+/* Simple pass-through fragment shader on the Vulkan side. */
 void main() {
+   uFragColor = texture(tex, texcoord.xy);
+}
+
+/* Unused: Would do the ST-2084 PQ Perceptual Quantizer HDR-10 mapping OETF. */
+void pq_eotf_main() {
    vec3 L, Lp, f, v;
 
    /* Get source color sample */

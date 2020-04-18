@@ -470,7 +470,10 @@ struct demo {
     GLuint glReady;
     GLuint glComplete;
     GLuint color;
-    GLuint fbo;
+    GLuint srctexture;
+    GLuint dstfbo; // Destination fbo to which Vulkan backing memory is attached.
+    GLuint srcfbo; // Source fbo into which our simulated renderer renders.
+    GLuint hdr_shader; // HDR post-processing shader for EOTF application etc.
     GLuint vao;
     GLuint program;
     GLuint mem;
@@ -2916,34 +2919,13 @@ static void demo_resize(struct demo *demo) {
     demo_create_opengl_interop(demo);
 }
 
-void draw_opengl(struct demo* demo)
+// Simulated OpenGL rendering code -- would correspond to PTB user drawing code:
+void draw_opengl_client(struct demo* demo)
 {
     static bool firsttime = true;
     int w = demo->textures[0].tex_width;
     int h = demo->textures[0].tex_height;
 
-    if (!demo->interop_enabled)
-        return;
-
-    if (firsttime) {
-        glViewport(0, 0, demo->textures[0].tex_width, demo->textures[0].tex_height);
-        printf("RTT size: %i x %i\n", w, h);
-        firsttime = false;
-    }
-
-    // Bind fbo with Vulkan texture for RTT:
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->fbo);
-
-    glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
-    glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
-
-    // PQ 0.5 ~ 95 nits
-    // PQ 0.62186 ~ 300 nits
-    // PQ 0.666 ~ 455 nits
-    // PQ 0.69629 ~ 600 nits
-    // Clear to background color of changing color:
-    //glClearColor((float)(demo->curFrame % 40) / 40.0, 0.4, 0.9, 1.0);
-    //glClearColor( 0.2, 0.62186, 0.62186, 1.0);
     glClearColor( 351.0, 351.0, 351.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -2975,12 +2957,224 @@ void draw_opengl(struct demo* demo)
         glEnd();
         glDisable(GL_TEXTURE_2D);
     }
+}
+
+void draw_opengl(struct demo* demo)
+{
+    static bool firsttime = true;
+    int w = demo->textures[0].tex_width;
+    int h = demo->textures[0].tex_height;
+
+    if (!demo->interop_enabled)
+        return;
+
+    if (firsttime) {
+        glClampColor(GL_CLAMP_VERTEX_COLOR, GL_FALSE);
+        glClampColor(GL_CLAMP_FRAGMENT_COLOR, GL_FALSE);
+        glViewport(0, 0, w, h);
+        printf("Vulkan target fbo size: %i x %i\n", w, h);
+        firsttime = false;
+    }
+
+    // Bind fbo with our virtual OpenGL framebuffer, so simulated client code
+    // can render the stimulus image in RGBA16F nits, BT2020/2100 color space.
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->srcfbo);
+
+    // Call simulated client rendering code:
+    draw_opengl_client(demo);
+
+    // Bind FBO with our Vulkan interop texture:
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, demo->dstfbo);
+
+    if (true) {
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        //glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, demo->srctexture);
+        //glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glUseProgram(demo->hdr_shader);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex2f(-1.0, -1.0);
+        glTexCoord2f(1.0, 0.0);
+        glVertex2f(1.0, -1.0);
+        glTexCoord2f(1.0, 1.0);
+        glVertex2f(1.0, 1.0);
+        glTexCoord2f(0.0, 1.0);
+        glVertex2f(-1.0, 1.0);
+        glEnd();
+        glUseProgram(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        //glDisable(GL_TEXTURE_2D);
+    }
+    else {
+        // Simple blit from src to dst, no OETF HDR shader applied:
+        glBlitNamedFramebuffer(demo->srcfbo, demo->dstfbo, 0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
 
     // Poor man's sync until we use semaphores properly:
     glFinish();
 
     // Unbind, so Vulkan can texture / blit from it:
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
+// hdrFragmentShaderSrc currently implements the ST-2084 PQ OETF, for EOTF
+// decoding in the display. Iow. it implements the HDR-10 mapping from a
+// linear color intensity input range (in nits aka cd/m2) from 0 - 10000 nits
+// to the PQ mapped range 0.0 - 1.0, which then can get encoded into typically
+// 10 bits per color channel and transmitted to the display for decoding.
+static char hdrFragmentShaderSrc[] =
+"uniform sampler2D Image; \n"
+"\n"
+"void main() \n"
+"{ \n"
+"   vec3 L, Lp, f, v; \n"
+"\n"
+"   /* Get source color sample */ \n"
+"   vec4 uFragColor = texture2D(Image, gl_TexCoord[0].st); \n"
+"\n"
+"   /* Normalize input range [0 - 10000.0 nits] to [0.0 - 1.0]; */ \n"
+"   L = uFragColor.rgb; \n"
+"   L = L / 10000.0; \n"
+"\n"
+"   /* Apply ST 2084 PQ OETF */ \n"
+"   Lp = pow(L, vec3(0.1593017578125)); \n"
+"   f = (0.8359375 + 18.8515625 * Lp) / (1.0 + 18.6875 * Lp); \n"
+"   v  = pow(f, vec3(78.84375)); \n"
+"\n"
+"   /* Debug range check: If red input value greater than some nits, color it red */ \n"
+"   if (uFragColor.r >= 1000.0) \n"
+"      v = vec3(1.0, 0.0, 0.0); \n"
+"\n"
+"   /* Assign PQ mapped to output */ \n"
+"   gl_FragColor.rgb = v; \n"
+"   gl_FragColor.a = uFragColor.a; \n"
+"} \n";
+
+GLuint PsychCreateGLSLProgram(const char* fragmentsrc, const char* vertexsrc)
+{
+    GLuint glsl = 0;
+    GLuint shader;
+    GLint status;
+    char errtxt[10000];
+
+    // Reset error state:
+    while (glGetError());
+
+    // Supported at all on this hardware?
+    if (!glewIsSupported("GL_ARB_shader_objects") || !glewIsSupported("GL_ARB_shading_language_100")) {
+        printf("PTB-ERROR: Your graphics hardware does not support GLSL fragment shaders! Use of imaging pipeline with current settings impossible!\n");
+        return(0);
+    }
+
+    // Create GLSL program object:
+    glsl = glCreateProgram();
+
+    // Fragment shader wanted?
+    if (fragmentsrc) {
+        printf("PTB-INFO: Creating the following fragment shader, GLSL source code follows:\n\n%s\n\n", fragmentsrc);
+
+        // Supported on this hardware?
+        if (!glewIsSupported("GL_ARB_fragment_shader")) {
+            printf("PTB-ERROR: Your graphics hardware does not support GLSL fragment shaders! Use of imaging pipeline with current settings impossible!\n");
+            return(0);
+        }
+
+        // Create shader object:
+        shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+        // Feed it with GLSL source code:
+        glShaderSource(shader, 1, (const char**) &fragmentsrc, NULL);
+
+        // Compile shader:
+        glCompileShader(shader);
+
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+        if (status != GL_TRUE) {
+            printf("PTB-ERROR: Shader compilation for builtin fragment shader failed:\n");
+            glGetShaderInfoLog(shader, 9999, NULL, (GLchar*) &errtxt);
+            printf("%s\n\n", errtxt);
+
+            glDeleteShader(shader);
+            glDeleteProgram(glsl);
+
+            // Failed!
+            while (glGetError());
+
+            return(0);
+        }
+
+        // Attach it to program object:
+        glAttachShader(glsl, shader);
+    }
+
+    // Vertex shader wanted?
+    if (vertexsrc) {
+        printf("PTB-INFO: Creating the following vertex shader, GLSL source code follows:\n\n%s\n\n", vertexsrc);
+
+        // Supported on this hardware?
+        if (!glewIsSupported("GL_ARB_vertex_shader")) {
+            printf("PTB-ERROR: Your graphics hardware does not support GLSL vertex shaders! Use of imaging pipeline with current settings impossible!\n");
+            return(0);
+        }
+
+        // Create shader object:
+        shader = glCreateShader(GL_VERTEX_SHADER);
+
+        // Feed it with GLSL source code:
+        glShaderSource(shader, 1, (const char**) &vertexsrc, NULL);
+
+        // Compile shader:
+        glCompileShader(shader);
+
+        glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+        if (status != GL_TRUE) {
+            printf("PTB-ERROR: Shader compilation for builtin vertex shader failed:\n");
+            glGetShaderInfoLog(shader, 9999, NULL, (GLchar*) &errtxt);
+            printf("%s\n\n", errtxt);
+
+            glDeleteShader(shader);
+            glDeleteProgram(glsl);
+
+            // Failed!
+            while (glGetError());
+
+            return(0);
+        }
+
+        // Attach it to program object:
+        glAttachShader(glsl, shader);
+    }
+
+    // Link into final program object:
+    glLinkProgram(glsl);
+
+    // Check link status:
+    glGetProgramiv(glsl, GL_LINK_STATUS, &status);
+    if (status != GL_TRUE) {
+        printf("PTB-ERROR: Shader link operation for builtin glsl program failed:\n");
+        glGetProgramInfoLog(glsl, 9999, NULL, (GLchar*) &errtxt);
+        printf("Error output follows:\n\n%s\n\n", errtxt);
+
+        glDeleteProgram(glsl);
+
+        // Failed!
+        while (glGetError());
+
+        return(0);
+    }
+
+    while (glGetError());
+
+    // Return new GLSL program object handle:
+    return(glsl);
 }
 
 static void demo_create_opengl_interop(struct demo* demo)
@@ -3031,7 +3225,7 @@ static void demo_create_opengl_interop(struct demo* demo)
     if (err)
         printf("Stage 3: GL ERROR: %i\n", err);
 
-    // Query actual tiling mode of texture. We need "optimal tiling" !
+    // Query actual tiling mode of texture:
     glBindTexture(GL_TEXTURE_2D, demo->color);
 
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
@@ -3044,9 +3238,6 @@ static void demo_create_opengl_interop(struct demo* demo)
 
     glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA8, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
     printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
-
-    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_IMMUTABLE_FORMAT, &tilingMode);
-    printf("GL_TEXTURE_IMMUTABLE_FORMAT %i\n", tilingMode);
 
     // Set tiling mode for rendering into textures:
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, (demo->interop_tiled_texture) ? GL_OPTIMAL_TILING_EXT : GL_LINEAR_TILING_EXT);
@@ -3076,12 +3267,12 @@ static void demo_create_opengl_interop(struct demo* demo)
     }
 
     glTextureStorageMem2DEXT(demo->color, 1, internalFormat, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
-    printf("Teximport size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
+    printf("Interop texture import size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
     err = glGetError();
     if (err)
         printf("Stage 4: GL ERROR: %i\n", err);
 
-    // Query actual tiling mode of texture. We need "optimal tiling" !
+    // Query actual tiling mode of texture:
     glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
     if (tilingMode == GL_OPTIMAL_TILING_EXT)
         printf("Using optimal tiling for shared texture.\n");
@@ -3090,16 +3281,26 @@ static void demo_create_opengl_interop(struct demo* demo)
     else
         printf("Using UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
-
     err = glGetError();
     if (err)
         printf("Stage 5: GL ERROR: %i\n", err);
 
-    // Create FBO, attach our imported/Vulkan-shared texture as color buffer, so
-    // we can render-to-texture in OpenGL, present in Vulkan:
-    glCreateFramebuffers(1, &demo->fbo);
-    glNamedFramebufferTexture(demo->fbo, GL_COLOR_ATTACHMENT0, demo->color, 0);
+    // Create destination FBO, attach our imported/Vulkan-shared texture as color
+    // buffer, so we can render-to-texture in OpenGL, present in Vulkan:
+    glCreateFramebuffers(1, &demo->dstfbo);
+    glNamedFramebufferTexture(demo->dstfbo, GL_COLOR_ATTACHMENT0, demo->color, 0);
+
+    // Create our source FBO, into which our simulated OpenGL client renders.
+    glCreateTextures(GL_TEXTURE_2D, 1, &demo->srctexture);
+    glBindTexture(GL_TEXTURE_2D, demo->srctexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, demo->textures[0].tex_width, demo->textures[0].tex_height, 0, GL_RGBA, GL_FLOAT, NULL);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glCreateFramebuffers(1, &demo->srcfbo);
+    glNamedFramebufferTexture(demo->srcfbo, GL_COLOR_ATTACHMENT0, demo->srctexture, 0);
+
+    // Build HDR post-processing shader:
+    demo->hdr_shader = PsychCreateGLSLProgram(hdrFragmentShaderSrc, NULL);
 
     // Load image again, this time into the backing store of the GL_TEXTURE_2D
     // default binding 0 -- Yes, old school like it's 1992!
@@ -5218,7 +5419,6 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     if (demo->hdr_enabled) {
         printf("Trying to enable HDR mode...\n");
-        demo->interop_tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
 
         // Note: For all but VK_COLOR_SPACE_SRGB_NONLINEAR_KHR, the application must apply the
         // OETF encoding transfer function via shader! This according to VK_EXT_swapchain_colorspace
