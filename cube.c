@@ -457,6 +457,7 @@ struct demo {
     VkFormat interop_tex_format;
     VkBool32 interop_tiled_texture;
     VkBool32 interop_enabled;
+    VkBool32 timestamping_enabled;
 
     // MK HDR stuff:
     VkBool32 hdr_enabled;
@@ -477,6 +478,11 @@ struct demo {
     GLuint vao;
     GLuint program;
     GLuint mem;
+
+    // MK stuff for test patterns and colors:
+    int testpattern;    // Id of test pattern to show.
+    float tx, ty;       // Translation in x and y from center.
+    float rgb[3];       // R, G, B intensity in nits.
 
     uint32_t swapchainImageCount;
     VkSwapchainKHR swapchain;
@@ -1082,6 +1088,10 @@ void DemoUpdateTargetIPD(struct demo *demo) {
 
 void setHdrMetadata(struct demo *demo, float maxL, float avgL) {
     VkHdrMetadataEXT hdr_metadata;
+
+    if (!demo->hdr_enabled)
+        return;
+
     memset(&hdr_metadata, 0, sizeof(hdr_metadata));
 
     hdr_metadata.sType = VK_STRUCTURE_TYPE_HDR_METADATA_EXT;
@@ -1232,19 +1242,22 @@ static void demo_draw(struct demo *demo) {
     if ((NULL != glXGetSyncValuesOML) && glXGetSyncValuesOML(demo->display, demo->drawable, &ust, &msc, &sbc)) {
         // Timestamp disagreement of less than 1 msec is considered correct:
         serror = ((double) tSwapComplete / 1000.0) - (double) ust;
-        if (serror < 1000)
-            printf("OK: ");
+        if (demo->timestamping_enabled) {
+            if (serror < 1000)
+                printf("OK: ");
 
-        printf("msc %li, tSwapComplete %li - ust %li = %f usecs stimonset error: ", msc,
-               tSwapComplete, ust * 1000, serror);
+            printf("msc %li, tSwapComplete %li - ust %li = %f usecs stimonset error: ", msc, tSwapComplete, ust * 1000, serror);
+        }
+
         // Override with accurate value:
         tSwapComplete = ust * 1000;
     }
 #endif
 
-    printf("ifi = %f msecs. tSwapComplete - tPostSwapRequested = %f msecs.\n",
-           (double)(tSwapComplete - tlastSwapComplete) / 1000000.0,
-           (double)(tSwapComplete - tPostSwapRequested) / 1000000.0);
+    if (demo->timestamping_enabled)
+        printf("ifi = %f msecs. tSwapComplete - tPostSwapRequested = %f msecs.\n",
+               (double)(tSwapComplete - tlastSwapComplete) / 1000000.0,
+               (double)(tSwapComplete - tPostSwapRequested) / 1000000.0);
 
     // Update last swap complete for next cycle:
     tlastSwapComplete = tSwapComplete;
@@ -1386,12 +1399,6 @@ static void demo_draw(struct demo *demo) {
         if (demo->VK_GOOGLE_display_timing_enabled) {
             present.pNext = &present_time;
         }
-    }
-
-    // Assign HDR meta data for this frame:
-    if (demo->hdr_enabled && firsttime) {
-        firsttime = false;
-        setHdrMetadata(demo, 600.0, 351.0);
     }
 
 #ifndef WIN32
@@ -1972,7 +1979,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
             .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT,
         };
 
-        printf("PRE memory handle %p\n", demo->interophandles.memory);
+        //printf("PRE memory handle %p\n", demo->interophandles.memory);
         err = demo->fpGetMemoryWin32HandleKHR(demo->device, &memorygetwinhandleinfo, &demo->interophandles.memory);
         assert(!err);
         printf("GOT memory handle %p\n", demo->interophandles.memory);
@@ -1985,7 +1992,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
             .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
         };
 
-        printf("PRE memory fd %i\n", demo->interophandles.memory);
+        //printf("PRE memory fd %i\n", demo->interophandles.memory);
         err = demo->fpGetMemoryFdKHR(demo->device, &memorygetfdinfo, &demo->interophandles.memory);
         assert(!err);
         printf("GOT memory fd %i\n", demo->interophandles.memory);
@@ -2920,42 +2927,197 @@ static void demo_resize(struct demo *demo) {
 }
 
 // Simulated OpenGL rendering code -- would correspond to PTB user drawing code:
+void draw_jesse(struct demo* demo)
+{
+    // Draw Jesse the cat - i assume?
+    static bool firsttime = true;
+
+    float maxL = (demo->nativeDisplayHdrMetadata.maxLuminance > 0.0) ? demo->nativeDisplayHdrMetadata.maxLuminance : 600;
+
+    if (firsttime) {
+        firsttime = false;
+
+        // Default background color to maxFALL:
+        if (demo->rgb[0] == -1 && demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel > 0.0)
+            demo->rgb[0] = demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel;
+
+        if (demo->rgb[1] == -1 && demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel > 0.0)
+            demo->rgb[1] = demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel;
+
+        if (demo->rgb[2] == -1 && demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel > 0.0)
+            demo->rgb[2] = demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel;
+
+        // Set maxL to, well, maxL. Set maxFALL to a weighted average of input rgb, because most of
+        // the content is background color, and the 10% of Jesse are a bit "who cares?":
+        setHdrMetadata(demo, maxL, 0.2126 * demo->rgb[0] + 0.7152 * demo->rgb[1] + 0.0722 * demo->rgb[2]);
+    }
+
+    // Background in user-specified R, G, B:
+    glClearColor(demo->rgb[0], demo->rgb[1], demo->rgb[2], 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // Map max intensity r, g, b in the cat picture to maxL nits:
+    glColor3f(maxL, maxL, maxL);
+
+    // Draw some rotating square into the center, textured with the cat pic:
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    glTranslatef(demo->tx, demo->ty, 0.0);
+    glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
+    glScalef(0.15, 0.15, 1);
+
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glBegin(GL_QUADS);
+    glTexCoord2f(0.0, 0.0);
+    glVertex2f(-1.0, -1.0);
+    glTexCoord2f(1.0, 0.0);
+    glVertex2f(1.0, -1.0);
+    glTexCoord2f(1.0, 1.0);
+    glVertex2f(1.0, 1.0);
+    glTexCoord2f(0.0, 1.0);
+    glVertex2f(-1.0, 1.0);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
+}
+
+void draw_centerpatch(struct demo* demo, bool flash, bool move)
+{
+    // Draw a RGB patch filling the center 10% of the display:
+    static bool firsttime = true;
+
+    float maxL = (demo->nativeDisplayHdrMetadata.maxLuminance > 0.0) ? demo->nativeDisplayHdrMetadata.maxLuminance : 600;
+
+    if (firsttime) {
+        firsttime = false;
+
+        // Default color to maxLuminance:
+        if (demo->rgb[0] == -1)
+            demo->rgb[0] = maxL;
+
+        if (demo->rgb[1] == -1)
+            demo->rgb[1] = maxL;
+
+        if (demo->rgb[2] == -1)
+            demo->rgb[2] = maxL;
+
+        // Set maxL to, well, maxL. Set maxFALL to a weighted average of input rgb * 0.1, because only 10% are non-black:
+        setHdrMetadata(demo, maxL, (0.2126 * demo->rgb[0] + 0.7152 * demo->rgb[1] + 0.0722 * demo->rgb[2]) * 0.1);
+    }
+
+    // Background in black:
+    glClearColor(0, 0, 0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // User defined RGB values in nits:
+    if (!flash || ((demo->curFrame % 600) < 200))
+        glColor3f(demo->rgb[0], demo->rgb[1], demo->rgb[2]);
+    else
+        glColor3f(0, 0, 0);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    if (move) {
+        float v = ((float)(demo->curFrame % 2000) / 1000.0) - 1.0;
+        glTranslatef(sin(v * 3.1415) * 1.5, sin(v * 3.1415) * 1.5, 0.0);
+    } else {
+        glTranslatef(demo->tx, demo->ty, 0.0);
+    }
+
+    // Scale square to cover the center 10% of the display area:
+    glScalef(0.31623, 0.31623, 1);
+
+    glBegin(GL_QUADS);
+    glVertex2f(-1.0, -1.0);
+    glVertex2f(1.0, -1.0);
+    glVertex2f(1.0, 1.0);
+    glVertex2f(-1.0, 1.0);
+    glEnd();
+}
+
+void draw_fullscreen(struct demo* demo, bool flash)
+{
+    // Draw a RGB color filling the whole display:
+    static bool firsttime = true;
+
+    float maxFALL = (demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel > 0.0) ? demo->nativeDisplayHdrMetadata.maxFrameAverageLightLevel : demo->nativeDisplayHdrMetadata.maxLuminance;
+    if (maxFALL == 0)
+        maxFALL = 600.0;
+
+    if (firsttime) {
+        firsttime = false;
+
+        // Default background color to maxFALL:
+        if (demo->rgb[0] == -1)
+            demo->rgb[0] = maxFALL;
+
+        if (demo->rgb[1] == -1)
+            demo->rgb[1] = maxFALL;
+
+        if (demo->rgb[2] == -1)
+            demo->rgb[2] = maxFALL;
+
+        maxFALL = (0.2126 * demo->rgb[0] + 0.7152 * demo->rgb[1] + 0.0722 * demo->rgb[2]);
+
+        // Set maxL and maxFALL to a weighted average of input rgb:
+        setHdrMetadata(demo, maxFALL, maxFALL);
+    }
+
+    if (!flash || ((demo->curFrame % 600) < 200)) {
+        // Background in user specified color:
+        glClearColor(demo->rgb[0], demo->rgb[1], demo->rgb[2], 1.0);
+    }
+    else {
+        // Background black:
+        glClearColor(0, 0, 0, 1);
+    }
+
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
 void draw_opengl_client(struct demo* demo)
 {
     static bool firsttime = true;
     int w = demo->textures[0].tex_width;
     int h = demo->textures[0].tex_height;
 
-    glClearColor( 351.0, 351.0, 351.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
+    switch (demo->testpattern) {
+        case 0:
+        default:
+            draw_jesse(demo);
+            break;
 
-    if (true) {
-        glColor3f(600.0, 600.0, 600.0);
+        case 1:
+            draw_centerpatch(demo, false, false);
+            break;
 
-        // Draw some rotating square into the center, textured with a cat pic:
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glRotatef((float)(demo->curFrame % 360), 0, 0, 1);
-        glScalef(0.15, 0.15, 1);
-        glEnable(GL_TEXTURE_2D);
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glBegin(GL_QUADS);
-        glTexCoord2f(0.0, 0.0);
-        glVertex2f(-1.0, -1.0);
-        glTexCoord2f(1.0, 0.0);
-        glVertex2f(1.0, -1.0);
-        glTexCoord2f(1.0, 1.0);
-        glVertex2f(1.0, 1.0);
-        glTexCoord2f(0.0, 1.0);
-        glVertex2f(-1.0, 1.0);
-        glEnd();
-        glDisable(GL_TEXTURE_2D);
+        case 2:
+            draw_centerpatch(demo, true, false);
+            break;
+
+        case 3:
+            draw_centerpatch(demo, false, true);
+            break;
+
+        case 4:
+            draw_fullscreen(demo, false);
+            break;
+
+        case 5:
+            draw_fullscreen(demo, true);
+            break;
     }
 }
 
@@ -3050,7 +3212,7 @@ static char hdrFragmentShaderSrc[] =
 "   v  = pow(f, vec3(78.84375)); \n"
 "\n"
 "   /* Debug range check: If red input value greater than some nits, color it red */ \n"
-"   if (uFragColor.r >= 1000.0) \n"
+"   if (false && (uFragColor.r >= 1000.0)) \n"
 "      v = vec3(1.0, 0.0, 0.0); \n"
 "\n"
 "   /* Assign PQ mapped to output */ \n"
@@ -4171,7 +4333,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
         xcb_randr_query_version_reply_t *rqv_r = xcb_randr_query_version_reply(connection, rqv_c, NULL);
 
         if (!rqv_r || rqv_r->minor_version < 6) {
-            printf("No new-enough RandR version\n");
+            printf("No new-enough RandR version. Need RandR 1.6+\n");
             return 0;
         }
 
@@ -4182,14 +4344,14 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
         for (s_i = xcb_setup_roots_iterator(xcb_get_setup(connection));
             s_i.rem;
             xcb_screen_next(&s_i), i_s++) {
-            printf ("index %d screen %d\n", s_i.index, screen);
+            //printf ("index %d screen %d\n", s_i.index, screen);
             if (i_s == screen)
                 break;
         }
 
         xcb_window_t root = s_i.data->root;
 
-        printf("root window id x%x\n", root);
+        //printf("root window id x%x\n", root);
 
         xcb_randr_get_screen_resources_cookie_t gsr_c = xcb_randr_get_screen_resources(connection, root);
 
@@ -4239,7 +4401,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
     // Vulkan RandR extension?
     if (khr_display == NULL) {
         // Yep: Map RandR output to khr_display, hopefully:
-        printf("Using output 0x%x\n", output);
+        //printf("Using output 0x%x\n", output);
 
         #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
         demo_create_glx_opengl1(demo);
@@ -5624,8 +5786,15 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->gpuindex = 0;
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
+    demo->timestamping_enabled = false;
     demo->hdr_enabled = true;
     demo->local_dimming_enabled = false;
+    demo->testpattern = 0;
+    demo->tx = 0;
+    demo->ty = 0;
+    demo->rgb[0] = -1;
+    demo->rgb[1] = -1;
+    demo->rgb[2] = -1;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-hdr") == 0) {
@@ -5635,6 +5804,11 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
         if (strcmp(argv[i], "--localdimming") == 0) {
             demo->local_dimming_enabled = true;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--timestamp") == 0) {
+            demo->timestamping_enabled = true;
             continue;
         }
 
@@ -5663,6 +5837,30 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
         if (strcmp(argv[i], "--ifi") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->waitMsecs) == 1) {
             i++;
+            demo->timestamping_enabled = true;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--testpattern") == 0 && i < argc - 1 &&
+            sscanf(argv[i + 1], "%d", (int*) &demo->testpattern) == 1) {
+            i++;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--translate") == 0 && i < argc - 2 &&
+            sscanf(argv[i + 1], "%f", &demo->tx) == 1 &&
+            sscanf(argv[i + 2], "%f", &demo->ty) == 1) {
+            printf("User provided tx, ty = (%f, %f)\n", demo->tx, demo->ty);
+            i += 2;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--rgb") == 0 && i < argc - 3 &&
+            sscanf(argv[i + 1], "%f", &demo->rgb[0]) == 1 &&
+            sscanf(argv[i + 2], "%f", &demo->rgb[1]) == 1 &&
+            sscanf(argv[i + 3], "%f", &demo->rgb[2]) == 1) {
+            printf("User provided RGB in nits = (%f, %f, %f)\n", demo->rgb[0], demo->rgb[1], demo->rgb[2]);
+            i += 3;
             continue;
         }
 
@@ -5741,9 +5939,10 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr] [--localdimming]\n"
-                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>]\n"
-                        "[--c <framecount>] [--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr] [--localdimming] [--timestamp]\n"
+                        "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>] [--testpattern <pattern>]\n"
+                        "[--rgb <r g b>], with r,g,b in nits [--translate <x y>] [--c <framecount>]\n"
+                        "[--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
                         "VK_PRESENT_MODE_FIFO_KHR = %d\n"
