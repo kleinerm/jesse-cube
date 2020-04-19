@@ -4910,13 +4910,16 @@ static void demo_init_vk(struct demo *demo) {
 
     if (demo->hdr_enabled) {
         if (!hdrmetadataExtFound) {
-            ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
-            "the minimum set of extensions for HDR."
-            "\n\nDo you have a compatible "
-            "Vulkan installable client driver (ICD) installed?\nPlease "
-            "look at the Getting Started guide for additional "
-            "information.\n",
-            "vkCreateInstance Failure");
+            demo->hdr_enabled = false;
+
+            printf("\n\nWARNING WARNING WARNING WARNING WARNING WARNING WARNING\n");
+            printf("vkEnumerateDeviceExtensionProperties failed to find\n"
+                   "the minimum set of extensions for HDR.\n"
+                   "\nDo you have a compatible Vulkan installable client\n"
+                   "driver (ICD) installed?\n");
+            printf("Disabling HDR output support, running in minimal\n"
+                   "compatibility mode for most basic testing.\n");
+            printf("WARNING WARNING WARNING WARNING WARNING WARNING WARNING\n\n");
         }
     }
 
