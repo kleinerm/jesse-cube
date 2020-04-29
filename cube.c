@@ -913,6 +913,8 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
         vkCmdEndRenderPass(cmd_buf);
 
         if (demo->separate_present_queue) {
+            printf("Swapchainbuffer %d: Need separate_present_queue!!!\n", demo->current_buffer);
+
             // We have to transfer ownership from the graphics queue family to the
             // present queue family to be able to present.  Note that we don't have
             // to transfer from present queue family back to graphics queue family at
