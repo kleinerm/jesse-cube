@@ -458,6 +458,7 @@ struct demo {
     VkBool32 interop_tiled_texture;
     VkBool32 interop_enabled;
     VkBool32 timestamping_enabled;
+    VkBool32 use_blit;
 
     // MK HDR stuff:
     VkBool32 hdr_enabled;
@@ -731,12 +732,16 @@ static void demo_set_image_layout(struct demo *demo, VkImage image,
                                   VkImageLayout new_image_layout,
                                   VkAccessFlagBits srcAccessMask,
                                   VkPipelineStageFlags src_stages,
-                                  VkPipelineStageFlags dest_stages) {
-    assert(demo->cmd);
+                                  VkPipelineStageFlags dest_stages,
+                                  VkCommandBuffer cmd_buf) {
+    if (!cmd_buf)
+        assert(demo->cmd);
 
     VkImageMemoryBarrier image_memory_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .pNext = NULL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .srcAccessMask = srcAccessMask,
         .dstAccessMask = 0,
         .oldLayout = old_image_layout,
@@ -781,89 +786,160 @@ static void demo_set_image_layout(struct demo *demo, VkImage image,
 
     VkImageMemoryBarrier *pmemory_barrier = &image_memory_barrier;
 
-    vkCmdPipelineBarrier(demo->cmd, src_stages, dest_stages, 0, 0, NULL, 0,
+    vkCmdPipelineBarrier((cmd_buf) ? cmd_buf : demo->cmd, src_stages, dest_stages, 0, 0, NULL, 0,
                          NULL, 1, pmemory_barrier);
 }
 
 static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
-    const VkCommandBufferBeginInfo cmd_buf_info = {
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = NULL,
-        .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = NULL,
-    };
-    const VkClearValue clear_values[2] = {
-            //[0] = {.color.float32 = {0.05f, 0.05f, 0.05f, 0.0f}},
-            [0] = {.color.float32 = {0.0f, 0.0f, 0.0f, 0.0f}},
-            [1] = {.depthStencil = {1.0f, 0}},
-    };
-    const VkRenderPassBeginInfo rp_begin = {
-        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = NULL,
-        .renderPass = demo->render_pass,
-        .framebuffer = demo->swapchain_image_resources[demo->current_buffer].framebuffer,
-        .renderArea.offset.x = 0,
-        .renderArea.offset.y = 0,
-        .renderArea.extent.width = demo->width,
-        .renderArea.extent.height = demo->height,
-        .clearValueCount = 2,
-        .pClearValues = clear_values,
-    };
-    VkResult U_ASSERT_ONLY err;
+    if (demo->use_blit) {
+        VkResult U_ASSERT_ONLY err;
 
-    err = vkBeginCommandBuffer(cmd_buf, &cmd_buf_info);
-    assert(!err);
-    vkCmdBeginRenderPass(cmd_buf, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
-    vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline);
-    vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
-                            demo->pipeline_layout, 0, 1,
-                            &demo->swapchain_image_resources[demo->current_buffer].descriptor_set,
-                            0, NULL);
-    VkViewport viewport;
-    memset(&viewport, 0, sizeof(viewport));
-    viewport.height = (float)demo->height;
-    viewport.width = (float)demo->width;
-    viewport.minDepth = (float)0.0f;
-    viewport.maxDepth = (float)1.0f;
-    vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
-
-    VkRect2D scissor;
-    memset(&scissor, 0, sizeof(scissor));
-    scissor.extent.width = demo->width;
-    scissor.extent.height = demo->height;
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
-    vkCmdDraw(cmd_buf, 2 * 3, 1, 0, 0);
-    // Note that ending the renderpass changes the image's layout from
-    // COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
-    vkCmdEndRenderPass(cmd_buf);
-
-    if (demo->separate_present_queue) {
-        // We have to transfer ownership from the graphics queue family to the
-        // present queue family to be able to present.  Note that we don't have
-        // to transfer from present queue family back to graphics queue family at
-        // the start of the next frame because we don't care about the image's
-        // contents at that point.
-        VkImageMemoryBarrier image_ownership_barrier = {
-            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        const VkCommandBufferBeginInfo cmd_buf_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .pNext = NULL,
-            .srcAccessMask = 0,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-            .srcQueueFamilyIndex = demo->graphics_queue_family_index,
-            .dstQueueFamilyIndex = demo->present_queue_family_index,
-            .image = demo->swapchain_image_resources[demo->current_buffer].image,
-            .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+            .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+            .pInheritanceInfo = NULL,
+        };
 
-        vkCmdPipelineBarrier(cmd_buf,
-                             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                             VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
-                             0, NULL, 0, NULL, 1, &image_ownership_barrier);
+        err = vkBeginCommandBuffer(cmd_buf, &cmd_buf_info);
+        assert(!err);
+
+        demo_set_image_layout(demo, demo->textures[0].image,
+                              VK_IMAGE_ASPECT_COLOR_BIT,
+                              demo->textures[0].imageLayout,
+                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                              VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                              VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              cmd_buf);
+
+        demo_set_image_layout(demo, demo->swapchain_image_resources[demo->current_buffer].image,
+                              VK_IMAGE_ASPECT_COLOR_BIT,
+                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_ACCESS_MEMORY_READ_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              cmd_buf);
+
+        VkImageCopy copy_region = {
+            .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+            .srcOffset = {0, 0, 0},
+            .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+            .dstOffset = {0, 0, 0},
+            .extent = {demo->width, demo->height, 1},
+        };
+
+        vkCmdCopyImage(
+            cmd_buf, demo->textures[0].image,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, demo->swapchain_image_resources[demo->current_buffer].image,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+        demo_set_image_layout(demo, demo->textures[0].image,
+                              VK_IMAGE_ASPECT_COLOR_BIT,
+                              VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                              demo->textures[0].imageLayout,
+                              VK_ACCESS_TRANSFER_READ_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              cmd_buf);
+
+        demo_set_image_layout(demo, demo->swapchain_image_resources[demo->current_buffer].image,
+                              VK_IMAGE_ASPECT_COLOR_BIT,
+                              VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                              VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                              VK_ACCESS_TRANSFER_WRITE_BIT,
+                              VK_PIPELINE_STAGE_TRANSFER_BIT,
+                              VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                              cmd_buf);
+
+        err = vkEndCommandBuffer(cmd_buf);
+        assert(!err);
+
+        printf("Swapchainbuffer %d: Using vkCmdCopyImage() copy for interop -> swapchain transfer.\n", demo->current_buffer);
     }
-    err = vkEndCommandBuffer(cmd_buf);
-    assert(!err);
+    else {
+        const VkCommandBufferBeginInfo cmd_buf_info = {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = NULL,
+            .flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+            .pInheritanceInfo = NULL,
+        };
+        const VkClearValue clear_values[2] = {
+                //[0] = {.color.float32 = {0.05f, 0.05f, 0.05f, 0.0f}},
+                [0] = {.color.float32 = {0.0f, 0.0f, 0.0f, 0.0f}},
+                [1] = {.depthStencil = {1.0f, 0}},
+        };
+        const VkRenderPassBeginInfo rp_begin = {
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            .pNext = NULL,
+            .renderPass = demo->render_pass,
+            .framebuffer = demo->swapchain_image_resources[demo->current_buffer].framebuffer,
+            .renderArea.offset.x = 0,
+            .renderArea.offset.y = 0,
+            .renderArea.extent.width = demo->width,
+            .renderArea.extent.height = demo->height,
+            .clearValueCount = 2,
+            .pClearValues = clear_values,
+        };
+        VkResult U_ASSERT_ONLY err;
+
+        err = vkBeginCommandBuffer(cmd_buf, &cmd_buf_info);
+        assert(!err);
+        vkCmdBeginRenderPass(cmd_buf, &rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBindPipeline(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS, demo->pipeline);
+        vkCmdBindDescriptorSets(cmd_buf, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                demo->pipeline_layout, 0, 1,
+                                &demo->swapchain_image_resources[demo->current_buffer].descriptor_set,
+                                0, NULL);
+        VkViewport viewport;
+        memset(&viewport, 0, sizeof(viewport));
+        viewport.height = (float)demo->height;
+        viewport.width = (float)demo->width;
+        viewport.minDepth = (float)0.0f;
+        viewport.maxDepth = (float)1.0f;
+        vkCmdSetViewport(cmd_buf, 0, 1, &viewport);
+
+        VkRect2D scissor;
+        memset(&scissor, 0, sizeof(scissor));
+        scissor.extent.width = demo->width;
+        scissor.extent.height = demo->height;
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        vkCmdSetScissor(cmd_buf, 0, 1, &scissor);
+        vkCmdDraw(cmd_buf, 2 * 3, 1, 0, 0);
+        // Note that ending the renderpass changes the image's layout from
+        // COLOR_ATTACHMENT_OPTIMAL to PRESENT_SRC_KHR
+        vkCmdEndRenderPass(cmd_buf);
+
+        if (demo->separate_present_queue) {
+            // We have to transfer ownership from the graphics queue family to the
+            // present queue family to be able to present.  Note that we don't have
+            // to transfer from present queue family back to graphics queue family at
+            // the start of the next frame because we don't care about the image's
+            // contents at that point.
+            VkImageMemoryBarrier image_ownership_barrier = {
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = NULL,
+                .srcAccessMask = 0,
+                .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = demo->graphics_queue_family_index,
+                .dstQueueFamilyIndex = demo->present_queue_family_index,
+                .image = demo->swapchain_image_resources[demo->current_buffer].image,
+                .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+
+            vkCmdPipelineBarrier(cmd_buf,
+                                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0,
+                                0, NULL, 0, NULL, 1, &image_ownership_barrier);
+        }
+        err = vkEndCommandBuffer(cmd_buf);
+        assert(!err);
+
+        printf("Swapchainbuffer %d: Using 3D quad rendering + passthrough shader for interop -> swapchain transfer.\n", demo->current_buffer);
+    }
 }
 
 void demo_build_image_ownership_cmd(struct demo *demo, int i) {
@@ -1609,7 +1685,7 @@ static void demo_prepare_buffers(struct demo *demo) {
             {
              .width = swapchainExtent.width, .height = swapchainExtent.height,
             },
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
         .preTransform = preTransform,
         .compositeAlpha = compositeAlpha,
         .imageArrayLayers = 1,
@@ -2065,7 +2141,8 @@ static void demo_prepare_textures(struct demo *demo) {
             demo_set_image_layout(demo, demo->textures[i].image, VK_IMAGE_ASPECT_COLOR_BIT,
                                   VK_IMAGE_LAYOUT_PREINITIALIZED, demo->textures[i].imageLayout,
                                   VK_ACCESS_HOST_WRITE_BIT, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, NULL);
+
             demo->staging_texture.image = 0;
         } else if ((props.optimalTilingFeatures &
                 (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) {
@@ -2091,7 +2168,7 @@ static void demo_prepare_textures(struct demo *demo) {
                                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                   VK_ACCESS_HOST_WRITE_BIT,
                                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                  VK_PIPELINE_STAGE_TRANSFER_BIT);
+                                  VK_PIPELINE_STAGE_TRANSFER_BIT, NULL);
 
             demo_set_image_layout(demo, demo->textures[i].image,
                                   VK_IMAGE_ASPECT_COLOR_BIT,
@@ -2099,7 +2176,7 @@ static void demo_prepare_textures(struct demo *demo) {
                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                   VK_ACCESS_HOST_WRITE_BIT,
                                   VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                  VK_PIPELINE_STAGE_TRANSFER_BIT);
+                                  VK_PIPELINE_STAGE_TRANSFER_BIT, NULL);
 
             VkImageCopy copy_region = {
                 .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
@@ -2120,7 +2197,7 @@ static void demo_prepare_textures(struct demo *demo) {
                                   demo->textures[i].imageLayout,
                                   VK_ACCESS_TRANSFER_WRITE_BIT,
                                   VK_PIPELINE_STAGE_TRANSFER_BIT,
-                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+                                  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, NULL);
 
         } else {
             /* Can't support VK_FORMAT_R8G8B8A8_UNORM !? */
@@ -3216,8 +3293,9 @@ static char hdrFragmentShaderSrc[] =
 "      v = vec3(1.0, 0.0, 0.0); \n"
 "\n"
 "   /* Assign PQ mapped to output */ \n"
-"   gl_FragColor.rgb = v; \n"
 "   gl_FragColor.a = uFragColor.a; \n"
+"   gl_FragColor.bgr = v; \n"
+//"   gl_FragColor.rgb = v; \n"
 "} \n";
 
 GLuint PsychCreateGLSLProgram(const char* fragmentsrc, const char* vertexsrc)
@@ -5786,6 +5864,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->gpuindex = 0;
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
+    demo->use_blit = true;
     demo->timestamping_enabled = false;
     demo->hdr_enabled = true;
     demo->local_dimming_enabled = false;
@@ -5809,6 +5888,11 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 
         if (strcmp(argv[i], "--timestamp") == 0) {
             demo->timestamping_enabled = true;
+            continue;
+        }
+
+        if (strcmp(argv[i], "--useshader") == 0) {
+            demo->use_blit = false;
             continue;
         }
 
@@ -5939,7 +6023,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #if defined(ANDROID)
         ERR_EXIT("Usage: cube [--validate]\n", "Usage");
 #else
-        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--no-hdr] [--localdimming] [--timestamp]\n"
+        fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--useshader] [--no-hdr] [--localdimming] [--timestamp]\n"
                         "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>] [--testpattern <pattern>]\n"
                         "[--rgb <r g b>], with r,g,b in nits [--translate <x y>] [--c <framecount>]\n"
                         "[--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
