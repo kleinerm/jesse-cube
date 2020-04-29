@@ -1969,7 +1969,7 @@ static void demo_prepare_texture_image(struct demo *demo, const char *filename,
 
     memset(&demo->interophandles, 0, sizeof(demo->interophandles));
 
-    if ((usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) && demo->interop_enabled) {
+    if ((usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) && demo->interop_enabled) {
 #ifdef WIN32
         // Get handle for shared memory with OpenGL:
         VkMemoryGetWin32HandleInfoKHR memorygetwinhandleinfo = {
@@ -2055,7 +2055,7 @@ static void demo_prepare_textures(struct demo *demo) {
             /* Device can texture using linear textures */
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->textures[i], VK_IMAGE_TILING_LINEAR,
-                VK_IMAGE_USAGE_SAMPLED_BIT | ((i == 0) ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT : 0),
+                VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | ((i == 0) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : 0),
                 ((!demo->interop_enabled) ?
                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT :
                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)); // MK Require device local bit.
@@ -2081,8 +2081,8 @@ static void demo_prepare_textures(struct demo *demo) {
 
             demo_prepare_texture_image(
                 demo, tex_files[i], &demo->textures[i], VK_IMAGE_TILING_OPTIMAL,
-                (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
-                ((i == 0) ? VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT : 0)),
+                (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+                ((i == 0) ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : 0)),
                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);  // MK Require device local bit.
 
             demo_set_image_layout(demo, demo->staging_texture.image,
