@@ -1308,27 +1308,31 @@ static void demo_draw(struct demo *demo) {
     tSwapComplete = getTimeInNanoseconds();
 
 #if defined(VK_USE_PLATFORM_XLIB_XRANDR_EXT)
-    // Under Linux + X11 we can (ab)use our X11 window on the same output that is
-    // leased out to Vulkan to use the glXGetSyncValuesOML() call on the Mesa FOSS
-    // based drivers to get a precise start of scanout timestamp at end of most
-    // recent vblank. Ideally this will be almost identical to tSwapComplete, ie.
-    // tSwapComplete is a noisy approximation of the proper queried ust here.
-    // Indeed, this works on AMD:
-    uint64_t ust, msc, sbc;
-    double serror;
+    // Use the precise timestamping, based on high-precision vblank timestamps iff we present synchronized
+    // to vblank for tear-free presentation:
+    if (demo->presentMode == VK_PRESENT_MODE_FIFO_KHR || demo->presentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+        // Under Linux + X11 we can (ab)use our X11 window on the same output that is
+        // leased out to Vulkan to use the glXGetSyncValuesOML() call on the Mesa FOSS
+        // based drivers to get a precise start of scanout timestamp at end of most
+        // recent vblank. Ideally this will be almost identical to tSwapComplete, ie.
+        // tSwapComplete is a noisy approximation of the proper queried ust here.
+        // Indeed, this works on AMD:
+        uint64_t ust, msc, sbc;
+        double serror;
 
-    if ((NULL != glXGetSyncValuesOML) && glXGetSyncValuesOML(demo->display, demo->drawable, &ust, &msc, &sbc)) {
-        // Timestamp disagreement of less than 1 msec is considered correct:
-        serror = ((double) tSwapComplete / 1000.0) - (double) ust;
-        if (demo->timestamping_enabled) {
-            if (serror < 1000)
-                printf("OK: ");
+        if ((NULL != glXGetSyncValuesOML) && glXGetSyncValuesOML(demo->display, demo->drawable, &ust, &msc, &sbc)) {
+            // Timestamp disagreement of less than 1 msec is considered correct:
+            serror = ((double) tSwapComplete / 1000.0) - (double) ust;
+            if (demo->timestamping_enabled) {
+                if (serror < 1000)
+                    printf("OK: ");
 
-            printf("msc %li, tSwapComplete %li - ust %li = %f usecs stimonset error: ", msc, tSwapComplete, ust * 1000, serror);
+                printf("msc %li, tSwapComplete %li - ust %li = %f usecs stimonset error: ", msc, tSwapComplete, ust * 1000, serror);
+            }
+
+            // Override with accurate value:
+            tSwapComplete = ust * 1000;
         }
-
-        // Override with accurate value:
-        tSwapComplete = ust * 1000;
     }
 #endif
 
