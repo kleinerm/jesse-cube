@@ -5615,7 +5615,8 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         if (demo->interop_tex_format >= 2) {
             for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+                if ((surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) &&
+                    ((surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) || !demo->hdr_enabled)) {
                     printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
                     demo->format = surfFormats[i].surfaceFormat.format;
                     demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
@@ -5638,8 +5639,9 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         if (demo->interop_tex_format >= 1) {
             for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) {
-                    printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
+                if ((surfFormats[i].surfaceFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) &&
+                    ((surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) || !demo->hdr_enabled)) {
+                    printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
                     demo->format = surfFormats[i].surfaceFormat.format;
                     demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                     demo->interop_tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
@@ -5648,8 +5650,9 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             }
 
             for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
-                if (surfFormats[i].surfaceFormat.format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
-                    printf("[%i] Using swapchain format VK_FORMAT_A2B10G10R10_UNORM_PACK32\n", i);
+                if ((surfFormats[i].surfaceFormat.format == VK_FORMAT_A2R10G10B10_UNORM_PACK32) &&
+                    ((surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT) || !demo->hdr_enabled)) {
+                    printf("[%i] Using swapchain format VK_FORMAT_A2R10G10B10_UNORM_PACK32\n", i);
                     demo->format = surfFormats[i].surfaceFormat.format;
                     demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
                     demo->interop_tex_format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
