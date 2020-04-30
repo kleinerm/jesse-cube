@@ -485,6 +485,10 @@ struct demo {
     float tx, ty;       // Translation in x and y from center.
     float rgb[3];       // R, G, B intensity in nits.
 
+    // MK mode selection:
+    uint32_t max_width, max_height;
+    float min_hz;
+
     uint32_t swapchainImageCount;
     VkSwapchainKHR swapchain;
     SwapchainImageResources *swapchain_image_resources;
@@ -4197,7 +4201,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     uint32_t plane_count;
     VkDisplayPropertiesKHR *display_props;
     VkDisplayKHR display;
-    VkDisplayModePropertiesKHR mode_props;
+    VkDisplayModePropertiesKHR mode_props[100];
     VkDisplayPlanePropertiesKHR *plane_props;
     VkBool32 found_plane = VK_FALSE;
     uint32_t plane_index;
@@ -4242,9 +4246,19 @@ static VkResult demo_create_display_surface(struct demo *demo) {
 
     printf("%d modes\n", mode_count);
 
-    mode_count = 1;
-    err = vkGetDisplayModePropertiesKHR(demo->gpu, display, &mode_count, &mode_props);
+    mode_count = (mode_count > 100) ? 100 : mode_count;
+    err = vkGetDisplayModePropertiesKHR(demo->gpu, display, &mode_count, &mode_props[0]);
     assert(!err || (err == VK_INCOMPLETE));
+
+    for (int i = 0; i < mode_count; i++) {
+        printf("Mode[%i]: %d x %d @%f Hz\n", i, mode_props[i].parameters.visibleRegion.width, mode_props[i].parameters.visibleRegion.height, (float) mode_props[i].parameters.refreshRate / 1000.0f);
+        if (mode_props[i].parameters.visibleRegion.width <= demo->max_width &&
+            mode_props[i].parameters.visibleRegion.height <= demo->max_height &&
+            mode_props[i].parameters.refreshRate >= demo->min_hz * 1000) {
+            mode_props[0] = mode_props[i];
+            break;
+        }
+    }
 
     // Get the list of planes
     err = vkGetPhysicalDeviceDisplayPlanePropertiesKHR(demo->gpu, &plane_count, NULL);
@@ -4311,7 +4325,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
     free(plane_props);
 
     VkDisplayPlaneCapabilitiesKHR planeCaps;
-    vkGetDisplayPlaneCapabilitiesKHR(demo->gpu, mode_props.displayMode, plane_index, &planeCaps);
+    vkGetDisplayPlaneCapabilitiesKHR(demo->gpu, mode_props[0].displayMode, plane_index, &planeCaps);
     // Find a supported alpha mode
     VkCompositeAlphaFlagBitsKHR alphaMode = VK_DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR;
     VkCompositeAlphaFlagBitsKHR alphaModes[4] = {
@@ -4326,13 +4340,13 @@ static VkResult demo_create_display_surface(struct demo *demo) {
             break;
         }
     }
-    image_extent.width = mode_props.parameters.visibleRegion.width;
-    image_extent.height = mode_props.parameters.visibleRegion.height;
+    image_extent.width = mode_props[0].parameters.visibleRegion.width;
+    image_extent.height = mode_props[0].parameters.visibleRegion.height;
 
     create_info.sType = VK_STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR;
     create_info.pNext = NULL;
     create_info.flags = 0;
-    create_info.displayMode = mode_props.displayMode;
+    create_info.displayMode = mode_props[0].displayMode;
     create_info.planeIndex = plane_index;
     create_info.planeStackIndex = plane_props[plane_index].currentStackIndex;
     create_info.transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
@@ -5890,6 +5904,9 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->waitMsecs = 0;
     demo->output_name[0] = 0;
     demo->gpuindex = 0;
+    demo->max_width = 2560;
+    demo->max_height = 1440;
+    demo->min_hz = 60.0;
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
     demo->use_blit = true;
@@ -5976,6 +5993,15 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
             continue;
         }
 
+        if (strcmp(argv[i], "--mode") == 0 && i < argc - 3 &&
+            sscanf(argv[i + 1], "%i", &demo->max_width) == 1 &&
+            sscanf(argv[i + 2], "%i", &demo->max_height) == 1 &&
+            sscanf(argv[i + 3], "%f", &demo->min_hz) == 1) {
+            printf("User provided mode limits (< %i, < %i, > %f)\n", demo->max_width, demo->max_height, demo->min_hz);
+            i += 3;
+            continue;
+        }
+
         if (strcmp(argv[i], "--format") == 0 && i < argc - 1 &&
             sscanf(argv[i + 1], "%d", (int*) &demo->interop_tex_format) == 1) {
             i++;
@@ -6053,7 +6079,7 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
 #else
         fprintf(stderr, "Usage:\n  %s [--use_staging] [--validate] [--validate-checks-disabled] [--break] [--force-tiling] [--no-glinterop] [--useshader] [--no-hdr] [--localdimming] [--timestamp]\n"
                         "[--format <value>], with <value>: 0 = RGBA8, 1 = RGB10A2, 2 = RGBA16F [--ifi <msecs>] [--gpu <index>] [--output <RandROutputName>] [--testpattern <pattern>]\n"
-                        "[--rgb <r g b>], with r,g,b in nits [--translate <x y>] [--c <framecount>]\n"
+                        "[--rgb <r g b>], with r,g,b in nits [--translate <x y>] [--c <framecount>] [--mode <max_width max_height min_hz>]\n"
                         "[--suppress_popups] [--incremental_present] [--display_timing] [--present_mode <present mode enum>]\n"
                         "VK_PRESENT_MODE_IMMEDIATE_KHR = %d\n"
                         "VK_PRESENT_MODE_MAILBOX_KHR = %d\n"
