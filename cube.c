@@ -822,18 +822,40 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
                               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                               cmd_buf);
 
-        VkImageCopy copy_region = {
-            .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-            .srcOffset = {0, 0, 0},
-            .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
-            .dstOffset = {0, 0, 0},
-            .extent = {demo->width, demo->height, 1},
-        };
+        // Do pixel format of interop texture and swapchain image match?
+        if (demo->interop_tex_format != demo->format) {
+            // No: Need pixel color format conversion -> blit image:
+            VkImageBlit blit_region = {
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .srcOffsets = {{0, 0, 0}, {demo->width, demo->height, 1}},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .dstOffsets = {{0, 0, 0}, {demo->width, demo->height, 1}}
+            };
 
-        vkCmdCopyImage(
-            cmd_buf, demo->textures[0].image,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, demo->swapchain_image_resources[demo->current_buffer].image,
-            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+            vkCmdBlitImage(
+                cmd_buf, demo->textures[0].image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, demo->swapchain_image_resources[demo->current_buffer].image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &blit_region, VK_FILTER_NEAREST);
+
+            printf("Swapchainbuffer %d: Using vkCmdBlitImage() blit for interop -> swapchain transfer.\n", demo->current_buffer);
+        }
+        else {
+            // Yes: Can do a memcpy() style copy image:
+            VkImageCopy copy_region = {
+                .srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .srcOffset = {0, 0, 0},
+                .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                .dstOffset = {0, 0, 0},
+                .extent = {demo->width, demo->height, 1},
+            };
+
+            vkCmdCopyImage(
+                cmd_buf, demo->textures[0].image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, demo->swapchain_image_resources[demo->current_buffer].image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_region);
+
+            printf("Swapchainbuffer %d: Using vkCmdCopyImage() copy for interop -> swapchain transfer.\n", demo->current_buffer);
+        }
 
         demo_set_image_layout(demo, demo->textures[0].image,
                               VK_IMAGE_ASPECT_COLOR_BIT,
@@ -855,8 +877,6 @@ static void demo_draw_build_cmd(struct demo *demo, VkCommandBuffer cmd_buf) {
 
         err = vkEndCommandBuffer(cmd_buf);
         assert(!err);
-
-        printf("Swapchainbuffer %d: Using vkCmdCopyImage() copy for interop -> swapchain transfer.\n", demo->current_buffer);
     }
     else {
         const VkCommandBufferBeginInfo cmd_buf_info = {
@@ -3300,8 +3320,7 @@ static char hdrFragmentShaderSrc[] =
 "\n"
 "   /* Assign PQ mapped to output */ \n"
 "   gl_FragColor.a = uFragColor.a; \n"
-"   gl_FragColor.bgr = v; \n"
-//"   gl_FragColor.rgb = v; \n"
+"   gl_FragColor.rgb = v; \n"
 "} \n";
 
 GLuint PsychCreateGLSLProgram(const char* fragmentsrc, const char* vertexsrc)
