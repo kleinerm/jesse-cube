@@ -3470,20 +3470,6 @@ static void demo_create_opengl_interop(struct demo* demo)
     // Query actual tiling mode of texture:
     glBindTexture(GL_TEXTURE_2D, demo->color);
 
-    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
-    if (tilingMode == GL_OPTIMAL_TILING_EXT)
-        printf("Initially optimal tiling for shared texture.\n");
-    else if (tilingMode == GL_LINEAR_TILING_EXT)
-        printf("Initially linear tiling for shared texture.\n");
-    else
-        printf("Initially UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
-
-    glGetInternalformativ(GL_TEXTURE_2D, GL_RGBA8, GL_NUM_TILING_TYPES_EXT, 100, &tilingMode);
-    printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
-
-    // Set tiling mode for rendering into textures:
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, (demo->interop_tiled_texture) ? GL_OPTIMAL_TILING_EXT : GL_LINEAR_TILING_EXT);
-
     // Use the imported memory as backing for the OpenGL texture.  The internalFormat, dimensions
     // and mip count should match the ones used by Vulkan to create the image and determine it's memory
     // allocation.
@@ -3507,6 +3493,20 @@ static void demo_create_opengl_interop(struct demo* demo)
     default:
         printf("demo_create_opengl_interop: Invalid texture format!\n");
     }
+
+    glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, &tilingMode);
+    if (tilingMode == GL_OPTIMAL_TILING_EXT)
+        printf("Initially optimal tiling for shared texture.\n");
+    else if (tilingMode == GL_LINEAR_TILING_EXT)
+        printf("Initially linear tiling for shared texture.\n");
+    else
+        printf("Initially UNKNOWN tiling 0x%x for shared texture!\n", tilingMode);
+
+    glGetInternalformativ(GL_TEXTURE_2D, internalFormat, GL_NUM_TILING_TYPES_EXT, 1, &tilingMode);
+    printf("GL_NUM_TILING_TYPES_EXT %i\n", tilingMode);
+
+    // Set tiling mode for rendering into textures:
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_TILING_EXT, (demo->interop_tiled_texture) ? GL_OPTIMAL_TILING_EXT : GL_LINEAR_TILING_EXT);
 
     glTextureStorageMem2DEXT(demo->color, 1, internalFormat, demo->textures[0].tex_width, demo->textures[0].tex_height, demo->mem, 0);
     printf("Interop texture import size: %i x %i\n", demo->textures[0].tex_width, demo->textures[0].tex_height);
