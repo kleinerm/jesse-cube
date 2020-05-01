@@ -4210,11 +4210,7 @@ static VkResult demo_create_display_surface(struct demo *demo) {
 
     // Do we already have an output leased from X11?
     if (!demo->vkdisplay) {
-        // Nope. Maybe running directly on VT without X-Server? Try to get a
-        // direct DRM/KMS display, ie. become DRM-Master:
-        printf("Apparently running directly on Linux DRM framebuffer in a VT.\n");
-
-        // Enumerate available displays:
+        // Nope: Enumerate available displays:
         err = vkGetPhysicalDeviceDisplayPropertiesKHR(demo->gpu, &display_count, NULL);
         assert(!err);
 
@@ -4230,6 +4226,20 @@ static VkResult demo_create_display_surface(struct demo *demo) {
 
         // Get last display:
         demo->vkdisplay = display_props[display_count-1].display;
+
+        if (!demo->connection) {
+            // Nope. Maybe running directly on VT without X-Server? Try to get a
+            // direct DRM/KMS display, ie. become DRM-Master:
+            printf("Apparently running directly on Linux DRM framebuffer in a VT. Taking over as DRM master.\n");
+        }
+        else {
+            printf("Apparently first attempt at leasing the display failed due to a Vulkan driver bug?! Retrying differently.\n");
+            if (!get_x_lease(demo, demo->vkdisplay)) {
+                printf("Leasing the display failed again! Giving up.\n");
+                fflush(stdout);
+                exit(1);
+            }
+        }
     }
 
     display = demo->vkdisplay;
