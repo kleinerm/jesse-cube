@@ -5622,22 +5622,30 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         for (i = 0; i < formatCount; i++) {
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT)
-                printf("[%i] For colorspace VK_COLOR_SPACE_DOLBYVISION_EXT    - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_DOLBYVISION_EXT          - ", i);
 
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT)
-                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_ST2084_EXT   - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_ST2084_EXT         - ", i);
 
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_HDR10_HLG_EXT)
-                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_HLG_EXT      - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_HDR10_HLG_EXT            - ", i);
 
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_BT2020_LINEAR_EXT)
-                printf("[%i] For colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT  - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_BT2020_LINEAR_EXT        - ", i);
 
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DISPLAY_NATIVE_AMD)
-                printf("[%i] For colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD       - ", i);
+
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT - ", i);
+
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_BT709_NONLINEAR_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_BT709_NONLINEAR_EXT      - ", i);
 
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
-                printf("[%i] For colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR - ", i);
+                printf("[%i] For colorspace VK_COLOR_SPACE_SRGB_NONLINEAR_KHR       - ", i);
+
+            //printf("[%i] %i\n", i, surfFormats[i].surfaceFormat.colorSpace);
 
             switch (surfFormats[i].surfaceFormat.format) {
                 case VK_FORMAT_R16G16B16A16_SFLOAT:
