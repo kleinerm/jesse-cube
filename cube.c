@@ -3939,8 +3939,11 @@ static void demo_run_xcb(struct demo *demo) {
         }
 
         memset(keys_return, 0, sizeof(keys_return));
-        XQueryKeymap(demo->display, (char*) keys_return);
         keysdown = 0;
+
+        if (demo->display)
+            XQueryKeymap(demo->display, (char*) keys_return);
+
         for (i = 0; i < 32; i++) keysdown+=(unsigned int) keys_return[i];
 
         // Map 32 times 8 bitvector to 256 element return vector:
@@ -5159,8 +5162,10 @@ static void demo_init_vk(struct demo *demo) {
 
 #if defined(WIN32)
     if (!fullscreenexclusiveExtFound) {
-#else
+#elseif defined(VK_USE_PLATFORM_DISPLAY_KHR)
     if (fullscreenInstanceExtsFound < 2) {
+#else
+    if (false) {
 #endif
         ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
         "the fullscreen exclusive extension."
@@ -5557,7 +5562,11 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
     VkSurfaceCapabilities2KHR surfacecapabilities2 = {
         .sType = VK_STRUCTURE_TYPE_SURFACE_CAPABILITIES_2_KHR,
+        #ifndef VK_USE_PLATFORM_XCB_KHR
         .pNext = &nativeHdrCapabilitiesAMD,
+        #else
+        .pNext = NULL,
+        #endif
         .surfaceCapabilities = surfCapabilities,
     };
 
@@ -5591,6 +5600,9 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     err = demo->fpGetPhysicalDeviceSurfaceFormats2KHR(demo->gpu, &surfaceinfo2,
                                                      &formatCount, surfFormats);
     assert(!err);
+
+    printf("Number of surface [%p] formats: %d\n", surfaceinfo2.surface, formatCount);
+
     // If the format list includes just one entry of VK_FORMAT_UNDEFINED,
     // the surface has no preferred format.  Otherwise, at least one
     // supported format will be returned.
@@ -5605,7 +5617,6 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         // Try to get RGBA16F float, then RGB10A2 formats as second choice, then
         // a fallback to default RGBA8:
         demo->format = VK_FORMAT_UNDEFINED;
-        printf("Number of surface formats: %d\n", formatCount);
 
         for (i = 0; i < formatCount; i++) {
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DOLBYVISION_EXT)
@@ -5914,8 +5925,8 @@ static void demo_init(struct demo *demo, int argc, char **argv) {
     demo->waitMsecs = 0;
     demo->output_name[0] = 0;
     demo->gpuindex = 0;
-    demo->max_width = 2560;
-    demo->max_height = 1440;
+    demo->max_width = 4000;
+    demo->max_height = 4000;
     demo->min_hz = 60.0;
     demo->interop_tiled_texture = false;
     demo->interop_enabled = true;
