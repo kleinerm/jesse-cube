@@ -5162,10 +5162,12 @@ static void demo_init_vk(struct demo *demo) {
 
 #if defined(WIN32)
     if (!fullscreenexclusiveExtFound) {
-#elseif defined(VK_USE_PLATFORM_DISPLAY_KHR)
+#else
+#if defined(VK_USE_PLATFORM_DISPLAY_KHR)
     if (fullscreenInstanceExtsFound < 2) {
 #else
     if (false) {
+#endif
 #endif
         ERR_EXIT("vkEnumerateDeviceExtensionProperties failed to find "
         "the fullscreen exclusive extension."
