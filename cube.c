@@ -5640,6 +5640,9 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_DISPLAY_NATIVE_AMD)
                 printf("[%i] For colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD       - ", i);
 
+            if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_PASS_THROUGH_EXT)
+                printf("[%i] For colorspace VK_COLOR_SPACE_PASS_THROUGH_EXT         - ", i);
+
             if (surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT)
                 printf("[%i] For colorspace VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT - ", i);
 
