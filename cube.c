@@ -5529,10 +5529,14 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     VkSurfaceCapabilitiesKHR surfCapabilities = { 0 };
 
 #if defined(WIN32)
+    POINT p;
+    GetCursorPos(&p);
+
     VkSurfaceFullScreenExclusiveWin32InfoEXT fullscreen_exclusive_info_win32 = {
         .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT,
         .pNext = NULL,
-        .hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
+        .hmonitor = MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY),
+        //.hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
     };
 
     VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
@@ -5677,6 +5681,21 @@ static void demo_init_vk_swapchain(struct demo *demo) {
             }
         }
 
+        // VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT is the only colorspace for RGBA16F fp16 framebuffer
+        // that is supported in HDR mode for both AMD and NVidia:
+        if (demo->interop_tex_format >= 3) {
+            for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
+                if ((surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) &&
+                    ((surfFormats[i].surfaceFormat.colorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT) || !demo->hdr_enabled)) {
+                    printf("[%i] Using swapchain format VK_FORMAT_R16G16B16A16_SFLOAT\n", i);
+                    demo->format = surfFormats[i].surfaceFormat.format;
+                    demo->color_space = surfFormats[i].surfaceFormat.colorSpace;
+                    demo->interop_tex_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+                    break;
+                }
+            }
+        }
+
         if (demo->interop_tex_format >= 2) {
             for (i = 0; (i < formatCount) && (demo->format == VK_FORMAT_UNDEFINED); i++) {
                 if ((surfFormats[i].surfaceFormat.format == VK_FORMAT_R16G16B16A16_SFLOAT) &&
@@ -5752,10 +5771,14 @@ static void demo_init_vk_swapchain(struct demo *demo) {
         // These work on AMD Raven Ridge: With the Monitor in standard or standard FreeSync mode:
         // 8 bit format VK_FORMAT_B8G8R8A8_UNORM and
         // 10 bit formats VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_A2R10G10B10_UNORM_PACK32 only work with:
-        demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+        //demo->color_space = VK_COLOR_SPACE_HDR10_ST2084_EXT;
 
         // RGBA16F 16 bpc float format always triggers HDR on AMD Raven Ridge, with all colorspaces,
         // even standard sRGB, iff FreeSync2 HDR is disabled, but not otherwise - see above.
+    }
+    else {
+        printf("No HDR mode!\n");
+        demo->color_space = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
     }
 
     if (!demo->interop_enabled) {
@@ -5802,6 +5825,10 @@ static void demo_init_vk_swapchain(struct demo *demo) {
 
         case VK_COLOR_SPACE_DISPLAY_NATIVE_AMD:
             printf("Using colorspace VK_COLOR_SPACE_DISPLAY_NATIVE_AMD\n");
+            break;
+
+        case VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT:
+            printf("Using colorspace VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT\n");
             break;
 
         default:
