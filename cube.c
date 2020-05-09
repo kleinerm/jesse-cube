@@ -3110,12 +3110,21 @@ void draw_centerpatch(struct demo* demo, bool flash, bool move)
         // Default color to maxLuminance:
         if (demo->rgb[0] == -1)
             demo->rgb[0] = maxL;
+        else
+            if (demo->rgb[0] > maxL)
+                maxL = demo->rgb[0];
 
         if (demo->rgb[1] == -1)
             demo->rgb[1] = maxL;
+        else
+            if (demo->rgb[1] > maxL)
+                maxL = demo->rgb[1];
 
         if (demo->rgb[2] == -1)
             demo->rgb[2] = maxL;
+        else
+            if (demo->rgb[2] > maxL)
+                maxL = demo->rgb[2];
 
         // Set maxL to, well, maxL. Set maxFALL to a weighted average of input rgb * 0.1, because only 10% are non-black:
         setHdrMetadata(demo, maxL, (0.2126 * demo->rgb[0] + 0.7152 * demo->rgb[1] + 0.0722 * demo->rgb[2]) * 0.1);
