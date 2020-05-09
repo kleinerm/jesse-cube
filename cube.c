@@ -3658,6 +3658,14 @@ static void demo_create_window(struct demo *demo) {
     HDC hDC;
     HGLRC glcontext;
     PIXELFORMATDESCRIPTOR pfd;
+    POINT p;
+    HMONITOR hmonitor;
+    MONITORINFOEX moninfo;
+
+    GetCursorPos(&p);
+    hmonitor = MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY);
+    moninfo.cbSize = sizeof(moninfo);
+    GetMonitorInfoA(hmonitor, (LPMONITORINFOEX) &moninfo);
 
     // Initialize the window class structure:
     win_class.cbSize = sizeof(WNDCLASSEX);
@@ -3680,6 +3688,8 @@ static void demo_create_window(struct demo *demo) {
         exit(1);
     }
 
+    printf("Displaying fullscreen on monitor %s.\n", moninfo.szDevice);
+
     // Create window with the registered class:
     //RECT wr = {0, 0, GetSystemMetrics(SM_CXFULLSCREEN), GetSystemMetrics(SM_CYFULLSCREEN)};
     //AdjustWindowRectEx(&wr, WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, WS_EX_TOPMOST | WS_EX_APPWINDOW);
@@ -3687,9 +3697,10 @@ static void demo_create_window(struct demo *demo) {
                                   demo->name,           // class name
                                   demo->name,           // app name
                                   WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, // window style | WS_SYSMENU,
-                                  0, 0,  // x/y coords
-                                  GetSystemMetrics(SM_CXSCREEN), // width
-                                  GetSystemMetrics(SM_CYSCREEN), // height
+                                  moninfo.rcMonitor.left, // x coord
+                                  moninfo.rcMonitor.top,  // y coord
+                                  moninfo.rcMonitor.right - moninfo.rcMonitor.left, // width
+                                  moninfo.rcMonitor.bottom - moninfo.rcMonitor.top, // height
                                   NULL,               // handle to parent
                                   NULL,               // handle to menu
                                   demo->connection,   // hInstance
@@ -5529,14 +5540,10 @@ static void demo_init_vk_swapchain(struct demo *demo) {
     VkSurfaceCapabilitiesKHR surfCapabilities = { 0 };
 
 #if defined(WIN32)
-    POINT p;
-    GetCursorPos(&p);
-
     VkSurfaceFullScreenExclusiveWin32InfoEXT fullscreen_exclusive_info_win32 = {
         .sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT,
         .pNext = NULL,
-        .hmonitor = MonitorFromPoint(p, MONITOR_DEFAULTTOPRIMARY),
-        //.hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
+        .hmonitor = MonitorFromWindow(demo->window, MONITOR_DEFAULTTOPRIMARY),
     };
 
     VkSurfaceFullScreenExclusiveInfoEXT fullscreen_exclusive_info = {
