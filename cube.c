@@ -4524,10 +4524,10 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 
             /* Find the first connected but unused output */
             if (goi_r->connection == XCB_RANDR_CONNECTION_CONNECTED) {
-                printf("Found connected output %s.\n", xcb_randr_get_output_info_name(goi_r));
+                printf("Found connected output %s [%i 0x%x].\n", xcb_randr_get_output_info_name(goi_r), ro[o], ro[o]);
                 if (!demo->output_name[0] || strstr(xcb_randr_get_output_info_name(goi_r), demo->output_name)) {
                     output = ro[o];
-                    printf("Selected output %s.\n", xcb_randr_get_output_info_name(goi_r));
+                    printf("Selected output %s [%i 0x%x].\n", xcb_randr_get_output_info_name(goi_r), ro[o], ro[o]);
                 }
             }
 
@@ -4549,7 +4549,7 @@ static VkBool32 get_x_lease(struct demo *demo, VkDisplayKHR khr_display)
 
     // Is this the first pass, where we try to find the khr_display to lease via
     // Vulkan RandR extension?
-    if (khr_display == NULL) {
+    if (khr_display == NULL && output != 0) {
         // Yep: Map RandR output to khr_display, hopefully:
         //printf("Using output 0x%x\n", output);
 
@@ -5041,6 +5041,8 @@ static void demo_init_vk(struct demo *demo) {
     err = vkEnumerateDeviceExtensionProperties(demo->gpu, NULL,
                                                &device_extension_count, NULL);
     assert(!err);
+
+    printf("found %i device extensions.\n", device_extension_count);
 
     if (device_extension_count > 0) {
         VkExtensionProperties *device_extensions =
@@ -6454,7 +6456,7 @@ int main(int argc, char **argv) {
 
 // MK:
 #if defined(VK_USE_PLATFORM_DISPLAY_KHR)
-    if (demo.display) {
+    if (demo.display && demo.interop_enabled) {
         demo_create_glx_opengl2(&demo);
     }
     else {
