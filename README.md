@@ -16,9 +16,9 @@ For HDR-10 testing you will need the AMD open-source Vulkan driver amdvlk:
 
 https://github.com/GPUOpen-Drivers/AMDVLK/releases
 
-As of 16th June 2020 and amvlk v-2020.Q2.4, none of the released AMD drivers is sufficiently bug-free to make this work.
-Hope is that an upcoming v-2020.Q2.5 may work. Other than that, kleinerm has his own self-build version of an actually
-working amdvlk driver.
+As of 26th June 2020 you need amdvlk v-2020.Q2.5, which has been successfully tested to work correctly. The following link provides a debian package which should work on Ubuntu 18.04 LTS and later, tested on Ubuntu 19.10 and 20.04 LTS:
+
+https://github.com/GPUOpen-Drivers/AMDVLK/releases/download/v-2020.Q2.5/amdvlk_2020.Q2.5_amd64.deb
 
 For basic non-HDR testing, the distribution provided RADV AMD Vulkan driver is sufficient.
 
